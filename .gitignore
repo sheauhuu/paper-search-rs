@@ -1,0 +1,13 @@
+.agents/*
+.claude/*
+.trellis/*
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.env
+config.yaml
+._*
+downloads/
+reference/

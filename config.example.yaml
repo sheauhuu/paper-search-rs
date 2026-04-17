@@ -1,0 +1,74 @@
+# paper-search-mcp configuration template
+# Copy this file to config.yaml and adjust values
+
+search:
+  default_platforms:
+    - arxiv
+    - semantic_scholar
+    - crossref
+  max_results_per_platform: 10
+  max_concurrent_searches: 5
+  timeout_seconds: 30
+
+platforms:
+  arxiv:
+    enabled: true
+    max_results: 50
+    rate_limit_rps: 0.33
+  google_scholar:
+    enabled: true
+    max_results: 20
+    rate_limit_rps: 0.5
+    proxy: true
+  semantic_scholar:
+    enabled: true
+    max_results: 100
+    rate_limit_rps: 3.0
+    api_key: ${SEMANTIC_SCHOLAR_API_KEY:}
+  crossref:
+    enabled: true
+    max_results: 100
+    rate_limit_rps: 3.0
+    mailto: ${CROSSREF_MAILTO:}
+  pubmed:
+    enabled: false
+    api_key: ${PUBMED_API_KEY:}
+    rate_limit_rps: 3.0
+  scopus:
+    enabled: false
+    api_key: ${SCOPUS_API_KEY:}
+    rate_limit_rps: 2.0
+  biorxiv:
+    enabled: false
+    rate_limit_rps: 1.0
+  medrxiv:
+    enabled: false
+    rate_limit_rps: 1.0
+  webofscience:
+    enabled: false
+    api_key: ${WOS_API_KEY:}
+    rate_limit_rps: 5.0
+    max_results: 50
+
+proxy:
+  http: ${HTTP_PROXY:}
+  https: ${HTTPS_PROXY:}
+  socks5: ${SOCKS_PROXY:}
+
+cache:
+  max_size: 100
+  ttl_seconds: 3600
+
+retry:
+  max_retries: 3
+  initial_delay_seconds: 1.0
+  max_delay_seconds: 30.0
+
+# JCR / journal metrics (Impact Factor, CAS quartile, CCF rank, warning list)
+# Data is loaded from ShowJCR repo (https://github.com/hitfyd/ShowJCR)
+# Run: paper-search-mcp --update-jcr   to download/update data
+jcr:
+  enabled: true
+  data_dir: ""                    # Custom data dir; default: ~/.paper-search-mcp/jcr
+  auto_update: false              # Auto-update on first search if data is stale
+  max_age_days: 30                # Consider data stale after this many days

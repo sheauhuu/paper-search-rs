@@ -5,6 +5,7 @@ import sys
 import unittest
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from paper_search_mcp import __main__ as main_module
+from paper_search_mcp import config as config_module
 from paper_search_mcp.config import Config
 from paper_search_mcp.models import Paper, WosSearchOptions
 from paper_search_mcp.search.biorxiv import BioRxivSearcher
@@ -117,11 +119,12 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(CrossRefSearcher._map_sort("citations"), "is-referenced-by-count")
 
     def test_env_config_defines_medrxiv_platform(self) -> None:
-        config = Config()
+        with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+            config = Config()
         self.assertIn("medrxiv", config.platforms)
         self.assertFalse(config.is_platform_enabled("medrxiv"))
 
-    def test_env_overrides_replace_file_config_usage(self) -> None:
+    def test_env_overrides_apply_without_config_files(self) -> None:
         with patch.dict(
             os.environ,
             {
@@ -133,7 +136,8 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
             },
             clear=True,
         ):
-            config = Config("ignored.yaml")
+            with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+                config = Config()
 
         self.assertEqual(config.default_platforms, ["crossref", "medrxiv"])
         self.assertTrue(config.is_platform_enabled("medrxiv"))
@@ -141,13 +145,26 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config.platform_config("crossref")["rate_limit_rps"], 4.5)
         self.assertEqual(config.platform_config("crossref")["mailto"], "bot@example.com")
 
+    def test_config_path_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "File-based configuration is no longer supported"):
+            Config("ignored.yaml")
+
+    def test_legacy_config_yaml_in_cwd_is_rejected(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            legacy_path = Path(temp_dir) / "config.yaml"
+            legacy_path.write_text("platforms:\\n  crossref:\\n    enabled: true\\n", encoding="utf-8")
+            with patch.object(Path, "cwd", return_value=Path(temp_dir)):
+                with self.assertRaisesRegex(ValueError, "Legacy config.yaml file detected"):
+                    Config()
+
     def test_env_default_platforms_allow_empty_list(self) -> None:
         with patch.dict(
             os.environ,
             {"PAPER_SEARCH_DEFAULT_PLATFORMS": "  "},
             clear=True,
         ):
-            config = Config()
+            with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+                config = Config()
 
         self.assertEqual(config.default_platforms, [])
 
@@ -157,7 +174,8 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
             {"PAPER_SEARCH_DEBUG": "true"},
             clear=True,
         ):
-            config = Config()
+            with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+                config = Config()
 
         self.assertTrue(config.debug_enabled)
 
@@ -191,7 +209,8 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
             },
             clear=True,
         ):
-            searcher = WebOfScienceSearcher(Config())
+            with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+                searcher = WebOfScienceSearcher(Config())
 
         paper = searcher._parse_record(
             {
@@ -221,6 +240,34 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("uid:", text)
         self.assertNotIn("doctype:", text)
 
+    async def test_webofscience_diagnostics_keep_fallback_request_url(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": "true",
+                "WOS_API_KEY": "fake-key",
+            },
+            clear=True,
+        ):
+            with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+                searcher = WebOfScienceSearcher(Config())
+
+        async def fake_request_with_fallback(url: str, **kwargs: object) -> dict:
+            searcher._api_version = "v1"
+            searcher._fallback_attempted = True
+            searcher.update_diagnostics(request_url=f"{searcher._api_url}/documents")
+            return {"hits": [], "metadata": {"total": 0}}
+
+        searcher._request_with_fallback = fake_request_with_fallback  # type: ignore[method-assign]
+        papers = await searcher.search("construction safety")
+
+        self.assertEqual(papers, [])
+        self.assertEqual(searcher._api_version, "v2")
+        self.assertEqual(
+            searcher.diagnostics_snapshot()["request_url"],
+            "https://api.clarivate.com/apis/wos-starter/v1/documents",
+        )
+
 
 class BioRxivSearcherTests(unittest.IsolatedAsyncioTestCase):
     async def test_search_filters_recent_records_by_free_text_query(self) -> None:
@@ -233,7 +280,8 @@ class BioRxivSearcherTests(unittest.IsolatedAsyncioTestCase):
             },
             clear=True,
         ):
-            searcher = BioRxivSearcher(Config())
+            with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+                searcher = BioRxivSearcher(Config())
 
             async def fake_get_json(url: str):
                 self.assertNotIn("?category=", url)

@@ -29,6 +29,15 @@ def _get_config() -> Config:
     return _config
 
 
+def _load_runtime_config(config_path: Optional[str] = None) -> Config:
+    """Load runtime config and convert legacy-config misuse into a clean CLI exit."""
+    try:
+        return Config(config_path)
+    except ValueError as exc:
+        logger.error(f"[config] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
 def _format_debug_section(diagnostics: list[PlatformDiagnostics]) -> str:
     """Render compact diagnostics for client-visible debugging."""
     lines = ["[debug]"]
@@ -193,7 +202,7 @@ def run(
         None,
         "--config",
         "-c",
-        help="Deprecated and ignored. Configure the server with environment variables instead.",
+        help="Unsupported. Use environment variables instead of file-based config.",
     ),
 ) -> None:
     """Run the paper-search-mcp server (default when no subcommand is given)."""
@@ -203,7 +212,7 @@ def run(
 
     # Load config early
     global _config
-    _config = Config(config_path)
+    _config = _load_runtime_config(config_path)
     enabled = _config.enabled_platforms()
     logger.info(f"paper-search-mcp starting | enabled platforms: {', '.join(enabled)}")
 
@@ -220,7 +229,7 @@ def update_jcr(
         None,
         "--config",
         "-c",
-        help="Deprecated and ignored. Configure the server with environment variables instead.",
+        help="Unsupported. Use environment variables instead of file-based config.",
     ),
     force: bool = typer.Option(
         False,
@@ -229,7 +238,7 @@ def update_jcr(
     ),
 ) -> None:
     """Download or update JCR journal metrics data."""
-    config = Config(config_path)
+    config = _load_runtime_config(config_path)
     config_dir = config.jcr.get("data_dir", "")
     data_dir = get_data_dir(config_dir)
 

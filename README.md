@@ -158,7 +158,8 @@ Categories: cs.CL; cs.LG
 ## Configuration
 
 The server now reads configuration from environment variables only. The `--config/-c`
-CLI option is deprecated and ignored.
+CLI option is no longer supported, and startup fails fast if a legacy `config.yaml`
+is supplied or detected.
 
 ### Environment variables
 

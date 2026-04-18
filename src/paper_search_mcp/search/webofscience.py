@@ -114,10 +114,11 @@ class WebOfScienceSearcher(BaseSearcher):
             data = await self._request_with_fallback(
                 f"{self._api_url}/documents", params=params, headers=headers,
             )
+            request_url = self.last_diagnostics.get("request_url", f"{self._api_url}/documents")
             self._reset_fallback()
             papers = self._parse_response(data)
             self.update_diagnostics(
-                request_url=f"{self._api_url}/documents",
+                request_url=request_url,
                 status_code=200,
                 result_count=len(papers),
                 error=None,

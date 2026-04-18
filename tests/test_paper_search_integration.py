@@ -13,6 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from paper_search_mcp import __main__ as main_module
+from paper_search_mcp import config as config_module
 from paper_search_mcp.config import Config
 from paper_search_mcp.models import Paper
 from paper_search_mcp.tools import paper_search as paper_search_module
@@ -86,7 +87,8 @@ def _make_config(
         "PAPER_SEARCH_DEBUG": str(debug_enabled).lower(),
     }
     with patch.dict(os.environ, env, clear=True):
-        return Config()
+        with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+            return Config()
 
 
 async def _get_paper_search_tool():

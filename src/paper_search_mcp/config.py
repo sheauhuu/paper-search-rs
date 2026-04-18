@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -123,6 +124,24 @@ _PLATFORM_SECRET_ENV = {
 }
 
 
+def _find_legacy_config_files() -> List[Path]:
+    """Return legacy config.yaml files that would have been auto-loaded before."""
+    candidates = [
+        Path.cwd() / "config.yaml",
+        Path(__file__).resolve().parents[2] / "config.yaml",
+    ]
+    seen: set[Path] = set()
+    found: List[Path] = []
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_file():
+            found.append(resolved)
+    return found
+
+
 def _apply_env_overrides(config: dict[str, Any]) -> None:
     """Overlay built-in defaults with environment variables."""
     search = config["search"]
@@ -203,8 +222,16 @@ class Config:
         self._raw = deepcopy(_DEFAULT_CONFIG)
 
         if config_path:
-            logger.warning(
-                "[config] config files are deprecated and ignored; use environment variables instead"
+            raise ValueError(
+                "File-based configuration is no longer supported. "
+                "Remove -c/--config and move settings to environment variables."
+            )
+        legacy_paths = _find_legacy_config_files()
+        if legacy_paths:
+            paths = ", ".join(str(path) for path in legacy_paths)
+            raise ValueError(
+                "Legacy config.yaml file detected at "
+                f"{paths}. Remove the file and move settings to environment variables."
             )
 
         _apply_env_overrides(self._raw)

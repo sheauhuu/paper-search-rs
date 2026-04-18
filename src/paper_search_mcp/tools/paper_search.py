@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
@@ -18,6 +19,26 @@ from ..search import SEARCHER_REGISTRY
 
 # ── JCR index singleton ───────────────────────────────────────────────────
 _jcr_index: Optional[JcrIndex] = None
+
+
+@dataclass
+class PlatformDiagnostics:
+    platform: str
+    enabled: bool = True
+    query: Optional[str] = None
+    request_url: Optional[str] = None
+    status_code: Optional[int] = None
+    api_key_present: Optional[bool] = None
+    result_count: Optional[int] = None
+    error: Optional[str] = None
+    exception_type: Optional[str] = None
+
+
+@dataclass
+class PaperSearchRunResult:
+    papers: List[Paper]
+    failures: List[str] = field(default_factory=list)
+    diagnostics: List[PlatformDiagnostics] = field(default_factory=list)
 
 
 def _get_jcr_index(config: Optional[Config] = None) -> Optional[JcrIndex]:
@@ -174,7 +195,7 @@ def _expand_quartile(q: str) -> set[str]:
 
 
 def _resolve_target_platforms(platforms: Optional[List[str]], config: Config) -> List[str]:
-    """Resolve explicit platforms or fall back to config defaults."""
+    """Resolve explicit platforms or fall back to env-backed defaults."""
     if platforms:
         return platforms
     return config.enabled_platforms()
@@ -220,7 +241,26 @@ def _build_search_kwargs(
     return kwargs
 
 
-async def paper_search(
+def _diagnostics_from_searcher(name: str, searcher: Any) -> PlatformDiagnostics:
+    snapshot = {}
+    if hasattr(searcher, "diagnostics_snapshot"):
+        snapshot = searcher.diagnostics_snapshot()
+    elif hasattr(searcher, "last_diagnostics"):
+        snapshot = dict(getattr(searcher, "last_diagnostics") or {})
+    if "platform" not in snapshot:
+        snapshot["platform"] = name
+    return PlatformDiagnostics(**snapshot)
+
+
+def _format_platform_failure(diag: PlatformDiagnostics) -> str:
+    if diag.error:
+        return diag.error
+    if not diag.enabled:
+        return f"{diag.platform} is disabled by configuration."
+    return f"{diag.platform} search failed."
+
+
+async def paper_search_with_diagnostics(
     query: str,
     platforms: Optional[List[str]] = None,
     max_results: int = 10,
@@ -237,56 +277,54 @@ async def paper_search(
     exclude_warning: bool = False,
     wos_options: Optional[WosSearchOptions] = None,
     config: Optional[Config] = None,
-) -> List[Paper]:
-    """Search academic papers across platforms concurrently.
-
-    Args:
-        query: Search keywords.
-        platforms: Platform names to search. None = use config defaults.
-        max_results: Max results per platform.
-        year_from: Filter by start year.
-        year_to: Filter by end year.
-        author: Filter by author.
-        sort_by: 'relevance', 'date', or 'citations'.
-        min_citations: Minimum citation count filter.
-        journal: Journal name keyword filter (case-insensitive match).
-        min_if: Minimum JCR Impact Factor filter.
-        jcr_quartile: JCR quartile filter (e.g. 'Q1', 'Q1,Q2').
-        cas_quartile: CAS quartile filter (e.g. '1', '1,2').
-        ccf_rank: CCF rank filter (e.g. 'A', 'A,B').
-        exclude_warning: Exclude journals on warning list.
-        wos_options: Web of Science-only native options (doi, issn, document_type, page).
-        config: Application config.
-
-    Returns:
-        Deduplicated and sorted list of Paper objects.
-    """
+) -> PaperSearchRunResult:
+    """Search papers and return result papers plus per-platform diagnostics."""
     if config is None:
         config = Config()
 
     target_platforms = _resolve_target_platforms(platforms, config)
     _validate_platform_specific_options(target_platforms, wos_options)
 
+    diagnostics: List[PlatformDiagnostics] = []
+    failures: List[str] = []
+
     # Instantiate searchers
     searchers: Dict[str, Any] = {}
+    explicit_platforms = bool(platforms)
     for name in target_platforms:
         cls = SEARCHER_REGISTRY.get(name)
         if cls is None:
             logger.warning(f"Unknown platform: {name}")
+            diag = PlatformDiagnostics(
+                platform=name,
+                enabled=False,
+                error=f"Unknown platform: {name}.",
+            )
+            diagnostics.append(diag)
+            if explicit_platforms:
+                failures.append(diag.error)
             continue
         if not config.is_platform_enabled(name):
             logger.info(f"Platform {name} is disabled in config, skipping")
+            diag = PlatformDiagnostics(
+                platform=name,
+                enabled=False,
+                error=f"{name} is disabled by configuration.",
+            )
+            diagnostics.append(diag)
+            if explicit_platforms:
+                failures.append(diag.error)
             continue
         searchers[name] = cls(config)
 
     if not searchers:
         logger.warning("No enabled platforms to search")
-        return []
+        return PaperSearchRunResult(papers=[], failures=failures, diagnostics=diagnostics)
 
     # Build search tasks with semaphore for concurrency limit
     semaphore = asyncio.Semaphore(config.max_concurrent_searches)
 
-    async def _search_one(name: str, searcher: Any) -> List[Paper]:
+    async def _search_one(name: str, searcher: Any) -> tuple[str, List[Paper]]:
         async with semaphore:
             try:
                 kwargs = _build_search_kwargs(
@@ -299,21 +337,37 @@ async def paper_search(
                     journal=journal,
                     wos_options=wos_options,
                 )
-                return await searcher.search(query, **kwargs)
+                papers = await searcher.search(query, **kwargs)
+                return name, papers
             except Exception as e:
                 logger.error(f"[{name}] Search error: {e}")
-                return []
+                if hasattr(searcher, "reset_diagnostics"):
+                    searcher.reset_diagnostics(query=query)
+                if hasattr(searcher, "update_diagnostics"):
+                    searcher.update_diagnostics(
+                        error=f"{name} search failed: {e}",
+                        exception_type=type(e).__name__,
+                    )
+                return name, []
 
     # Run all searches concurrently
     tasks = [_search_one(name, s) for name, s in searchers.items()]
     results = await asyncio.gather(*tasks)
+    results_map = dict(results)
+
+    for name in target_platforms:
+        if name not in searchers:
+            continue
+        diag = _diagnostics_from_searcher(name, searchers[name])
+        diagnostics.append(diag)
+        if not results_map.get(name) and diag.error:
+            failures.append(_format_platform_failure(diag))
 
     # Merge in platform-priority order
     all_papers: List[Paper] = []
     for name in target_platforms:
-        if name in searchers:
-            idx = list(searchers.keys()).index(name)
-            all_papers.extend(results[idx])
+        if name in results_map:
+            all_papers.extend(results_map[name])
 
     # Dedup and sort
     all_papers = _dedup_papers(all_papers)
@@ -354,4 +408,66 @@ async def paper_search(
             exclude_warning=exclude_warning,
         )
 
-    return all_papers
+    return PaperSearchRunResult(papers=all_papers, failures=failures, diagnostics=diagnostics)
+
+
+async def paper_search(
+    query: str,
+    platforms: Optional[List[str]] = None,
+    max_results: int = 10,
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
+    author: Optional[str] = None,
+    sort_by: str = "relevance",
+    min_citations: Optional[int] = None,
+    journal: Optional[str] = None,
+    min_if: Optional[float] = None,
+    jcr_quartile: Optional[str] = None,
+    cas_quartile: Optional[str] = None,
+    ccf_rank: Optional[str] = None,
+    exclude_warning: bool = False,
+    wos_options: Optional[WosSearchOptions] = None,
+    config: Optional[Config] = None,
+) -> List[Paper]:
+    """Search academic papers across platforms concurrently.
+
+    Args:
+        query: Search keywords.
+        platforms: Platform names to search. None = use env-backed defaults.
+        max_results: Max results per platform.
+        year_from: Filter by start year.
+        year_to: Filter by end year.
+        author: Filter by author.
+        sort_by: 'relevance', 'date', or 'citations'.
+        min_citations: Minimum citation count filter.
+        journal: Journal name keyword filter (case-insensitive match).
+        min_if: Minimum JCR Impact Factor filter.
+        jcr_quartile: JCR quartile filter (e.g. 'Q1', 'Q1,Q2').
+        cas_quartile: CAS quartile filter (e.g. '1', '1,2').
+        ccf_rank: CCF rank filter (e.g. 'A', 'A,B').
+        exclude_warning: Exclude journals on warning list.
+        wos_options: Web of Science-only native options (doi, issn, document_type, page).
+        config: Application config.
+
+    Returns:
+        Deduplicated and sorted list of Paper objects.
+    """
+    result = await paper_search_with_diagnostics(
+        query=query,
+        platforms=platforms,
+        max_results=max_results,
+        year_from=year_from,
+        year_to=year_to,
+        author=author,
+        sort_by=sort_by,
+        min_citations=min_citations,
+        journal=journal,
+        min_if=min_if,
+        jcr_quartile=jcr_quartile,
+        cas_quartile=cas_quartile,
+        ccf_rank=ccf_rank,
+        exclude_warning=exclude_warning,
+        wos_options=wos_options,
+        config=config,
+    )
+    return result.papers

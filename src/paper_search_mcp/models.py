@@ -53,6 +53,32 @@ class Paper(BaseModel):
     is_warning: bool = Field(default=False, description="Journal on warning list")
     extra: Dict[str, Any] = Field(default_factory=dict, description="Platform-specific metadata")
 
+    @staticmethod
+    def _format_extra_label(key: str) -> str:
+        """Convert internal extra keys to readable plain-text labels."""
+        return key.replace("_", " ").strip().title()
+
+    @staticmethod
+    def _format_extra_value(value: Any) -> Optional[str]:
+        """Format platform-specific metadata values for plain-text output."""
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            if value.get("range"):
+                return str(value["range"])
+            begin = value.get("begin")
+            end = value.get("end")
+            if begin and end:
+                return f"{begin}-{end}"
+            if value.get("count"):
+                return str(value["count"])
+            parts = [f"{k}={v}" for k, v in value.items() if v not in (None, "", [], {})]
+            return ", ".join(parts) or None
+        if isinstance(value, (list, tuple, set)):
+            items = [str(item) for item in value if item]
+            return "; ".join(items) or None
+        return str(value)
+
     def to_text(self) -> str:
         """Convert to plain-text representation for MCP output."""
         lines: list[str] = []
@@ -96,6 +122,7 @@ class Paper(BaseModel):
             lines.append(f"Warning: journal on warning list")
         if self.extra:
             for k, v in self.extra.items():
-                if v:
-                    lines.append(f"{k}: {v}")
+                formatted_value = self._format_extra_value(v)
+                if formatted_value:
+                    lines.append(f"{self._format_extra_label(k)}: {formatted_value}")
         return "\n".join(lines)

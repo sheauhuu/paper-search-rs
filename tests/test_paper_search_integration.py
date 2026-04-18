@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,47 +40,53 @@ class FakeCrossrefSearcher(_RecordingSearcher):
     results: list[Paper] = []
 
 
+class FakeFailingWosSearcher(_RecordingSearcher):
+    calls: list[dict] = []
+    results: list[Paper] = []
+
+    async def search(self, query: str, **kwargs: object) -> list[Paper]:
+        type(self).calls.append({"query": query, "kwargs": kwargs})
+        self.last_diagnostics = {
+            "platform": "webofscience",
+            "enabled": True,
+            "api_key_present": True,
+            "query": query,
+            "request_url": "https://api.clarivate.com/apis/wos-starter/v2/documents",
+            "status_code": 401,
+            "error": (
+                "Web of Science request failed: 401 Unauthorized. "
+                "Check WOS_API_KEY and WoS Starter API entitlement."
+            ),
+            "exception_type": "HTTPStatusError",
+        }
+        return []
+
+
 def _make_config(
-    temp_dir: str,
     *,
     default_platforms: list[str],
     enabled_platforms: dict[str, bool],
+    debug_enabled: bool = False,
 ) -> Config:
-    def _yaml_list(values: list[str]) -> str:
-        return "".join(f"    - {value}\n" for value in values)
-
-    def _yaml_enabled(value: bool) -> str:
-        return "true" if value else "false"
-
-    config_path = Path(temp_dir) / "config.yaml"
-    config_path.write_text(
-        (
-            "search:\n"
-            "  default_platforms:\n"
-            f"{_yaml_list(default_platforms)}"
-            "  max_results_per_platform: 10\n"
-            "  max_concurrent_searches: 5\n"
-            "  timeout_seconds: 30\n"
-            "platforms:\n"
-            "  arxiv:\n"
-            "    enabled: false\n"
-            "  google_scholar:\n"
-            "    enabled: false\n"
-            "  semantic_scholar:\n"
-            "    enabled: false\n"
-            "  webofscience:\n"
-            f"    enabled: {_yaml_enabled(enabled_platforms.get('webofscience', False))}\n"
-            "    api_key: fake-key\n"
-            "    max_results: 10\n"
-            "  crossref:\n"
-            f"    enabled: {_yaml_enabled(enabled_platforms.get('crossref', False))}\n"
-            "    max_results: 10\n"
-            "jcr:\n"
-            "  enabled: false\n"
-        ),
-        encoding="utf-8",
-    )
-    return Config(str(config_path))
+    env = {
+        "PAPER_SEARCH_DEFAULT_PLATFORMS": ",".join(default_platforms),
+        "PAPER_SEARCH_PLATFORM_ARXIV_ENABLED": "false",
+        "PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_ENABLED": "false",
+        "PAPER_SEARCH_PLATFORM_SEMANTIC_SCHOLAR_ENABLED": "false",
+        "PAPER_SEARCH_PLATFORM_CROSSREF_ENABLED": str(
+            enabled_platforms.get("crossref", False)
+        ).lower(),
+        "PAPER_SEARCH_PLATFORM_CROSSREF_MAX_RESULTS": "10",
+        "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": str(
+            enabled_platforms.get("webofscience", False)
+        ).lower(),
+        "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS": "10",
+        "WOS_API_KEY": "fake-key",
+        "PAPER_SEARCH_JCR_ENABLED": "false",
+        "PAPER_SEARCH_DEBUG": str(debug_enabled).lower(),
+    }
+    with patch.dict(os.environ, env, clear=True):
+        return Config()
 
 
 async def _get_paper_search_tool():
@@ -97,6 +103,8 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
         FakeWosSearcher.results = []
         FakeCrossrefSearcher.calls = []
         FakeCrossrefSearcher.results = []
+        FakeFailingWosSearcher.calls = []
+        FakeFailingWosSearcher.results = []
 
     async def test_tool_run_merges_duplicate_results_and_formats_output(self) -> None:
         FakeWosSearcher.results = [
@@ -128,43 +136,41 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
             )
         ]
 
-        with TemporaryDirectory() as temp_dir:
-            config = _make_config(
-                temp_dir,
-                default_platforms=["webofscience", "crossref"],
-                enabled_platforms={"webofscience": True, "crossref": True},
-            )
-            tool = await _get_paper_search_tool()
+        config = _make_config(
+            default_platforms=["webofscience", "crossref"],
+            enabled_platforms={"webofscience": True, "crossref": True},
+        )
+        tool = await _get_paper_search_tool()
 
-            with ExitStack() as stack:
-                stack.enter_context(patch.object(main_module, "_config", config))
-                stack.enter_context(
-                    patch.object(
-                        paper_search_module,
-                        "SEARCHER_REGISTRY",
-                        {
-                            "webofscience": FakeWosSearcher,
-                            "crossref": FakeCrossrefSearcher,
-                        },
-                    )
-                )
-                stack.enter_context(
-                    patch.object(paper_search_module, "_get_jcr_index", return_value=None)
-                )
-
-                result = await tool.run(
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(main_module, "_config", config))
+            stack.enter_context(
+                patch.object(
+                    paper_search_module,
+                    "SEARCHER_REGISTRY",
                     {
-                        "query": "machine learning",
-                        "platforms": ["webofscience", "crossref"],
-                        "author": "Alice",
-                        "journal": "nature",
-                        "min_citations": 5,
-                        "wos_options": {
-                            "doi": "10.1000/integration",
-                            "page": 2,
-                        },
-                    }
+                        "webofscience": FakeWosSearcher,
+                        "crossref": FakeCrossrefSearcher,
+                    },
                 )
+            )
+            stack.enter_context(
+                patch.object(paper_search_module, "_get_jcr_index", return_value=None)
+            )
+
+            result = await tool.run(
+                {
+                    "query": "machine learning",
+                    "platforms": ["webofscience", "crossref"],
+                    "author": "Alice",
+                    "journal": "nature",
+                    "min_citations": 5,
+                    "wos_options": {
+                        "doi": "10.1000/integration",
+                        "page": 2,
+                    },
+                }
+            )
 
         text_blocks = [block.text for block in result.content if getattr(block, "type", None) == "text"]
         self.assertEqual(len(text_blocks), 1)
@@ -195,36 +201,34 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
             )
         ]
 
-        with TemporaryDirectory() as temp_dir:
-            config = _make_config(
-                temp_dir,
-                default_platforms=["webofscience"],
-                enabled_platforms={"webofscience": True, "crossref": False},
+        config = _make_config(
+            default_platforms=["webofscience"],
+            enabled_platforms={"webofscience": True, "crossref": False},
+        )
+        tool = await _get_paper_search_tool()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(main_module, "_config", config))
+            stack.enter_context(
+                patch.object(
+                    paper_search_module,
+                    "SEARCHER_REGISTRY",
+                    {"webofscience": FakeWosSearcher},
+                )
             )
-            tool = await _get_paper_search_tool()
+            stack.enter_context(
+                patch.object(paper_search_module, "_get_jcr_index", return_value=None)
+            )
 
-            with ExitStack() as stack:
-                stack.enter_context(patch.object(main_module, "_config", config))
-                stack.enter_context(
-                    patch.object(
-                        paper_search_module,
-                        "SEARCHER_REGISTRY",
-                        {"webofscience": FakeWosSearcher},
-                    )
-                )
-                stack.enter_context(
-                    patch.object(paper_search_module, "_get_jcr_index", return_value=None)
-                )
-
-                result = await tool.run(
-                    {
-                        "query": "transformer",
-                        "wos_options": {
-                            "document_type": "Review",
-                            "page": 3,
-                        },
-                    }
-                )
+            result = await tool.run(
+                {
+                    "query": "transformer",
+                    "wos_options": {
+                        "document_type": "Review",
+                        "page": 3,
+                    },
+                }
+            )
 
         text_blocks = [block.text for block in result.content if getattr(block, "type", None) == "text"]
         self.assertEqual(len(text_blocks), 1)
@@ -234,23 +238,87 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(FakeWosSearcher.calls[0]["kwargs"]["page"], 3)
 
     async def test_tool_run_rejects_wos_options_when_webofscience_not_targeted(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            config = _make_config(
-                temp_dir,
-                default_platforms=["crossref"],
-                enabled_platforms={"webofscience": False, "crossref": True},
-            )
-            tool = await _get_paper_search_tool()
+        config = _make_config(
+            default_platforms=["crossref"],
+            enabled_platforms={"webofscience": False, "crossref": True},
+        )
+        tool = await _get_paper_search_tool()
 
-            with patch.object(main_module, "_config", config):
-                with self.assertRaisesRegex(ValueError, "webofscience"):
-                    await tool.run(
-                        {
-                            "query": "graph neural networks",
-                            "platforms": ["crossref"],
-                            "wos_options": {"doi": "10.1000/blocked"},
-                        }
-                    )
+        with patch.object(main_module, "_config", config):
+            with self.assertRaisesRegex(ValueError, "webofscience"):
+                await tool.run(
+                    {
+                        "query": "graph neural networks",
+                        "platforms": ["crossref"],
+                        "wos_options": {"doi": "10.1000/blocked"},
+                    }
+                )
+
+    async def test_tool_run_surfaces_wos_auth_failures(self) -> None:
+        config = _make_config(
+            default_platforms=["webofscience"],
+            enabled_platforms={"webofscience": True},
+        )
+        tool = await _get_paper_search_tool()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(main_module, "_config", config))
+            stack.enter_context(
+                patch.object(
+                    paper_search_module,
+                    "SEARCHER_REGISTRY",
+                    {"webofscience": FakeFailingWosSearcher},
+                )
+            )
+            stack.enter_context(
+                patch.object(paper_search_module, "_get_jcr_index", return_value=None)
+            )
+
+            result = await tool.run(
+                {
+                    "query": "TS=(construction AND safety) AND PY=(2020-2025)",
+                    "platforms": ["webofscience"],
+                }
+            )
+
+        text_blocks = [block.text for block in result.content if getattr(block, "type", None) == "text"]
+        self.assertEqual(len(text_blocks), 1)
+        self.assertIn("401 Unauthorized", text_blocks[0])
+        self.assertNotIn("No papers found.", text_blocks[0])
+
+    async def test_tool_run_appends_debug_section_when_enabled(self) -> None:
+        config = _make_config(
+            default_platforms=["webofscience"],
+            enabled_platforms={"webofscience": True},
+            debug_enabled=True,
+        )
+        tool = await _get_paper_search_tool()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(main_module, "_config", config))
+            stack.enter_context(
+                patch.object(
+                    paper_search_module,
+                    "SEARCHER_REGISTRY",
+                    {"webofscience": FakeFailingWosSearcher},
+                )
+            )
+            stack.enter_context(
+                patch.object(paper_search_module, "_get_jcr_index", return_value=None)
+            )
+
+            result = await tool.run(
+                {
+                    "query": "TS=(construction AND safety) AND PY=(2020-2025)",
+                    "platforms": ["webofscience"],
+                }
+            )
+
+        text_blocks = [block.text for block in result.content if getattr(block, "type", None) == "text"]
+        self.assertEqual(len(text_blocks), 1)
+        self.assertIn("[debug]", text_blocks[0])
+        self.assertIn("platform=webofscience", text_blocks[0])
+        self.assertIn("status=401", text_blocks[0])
 
 
 if __name__ == "__main__":

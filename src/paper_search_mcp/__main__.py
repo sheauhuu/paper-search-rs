@@ -13,7 +13,10 @@ from .config import Config
 from .jcr.loader import load_jcr_index
 from .models import SortBy, WosSearchOptions
 from .jcr.updater import get_data_dir, needs_update, save_version, update_jcr_data
-from .tools.paper_search import paper_search as _paper_search
+from .tools.paper_search import (
+    PlatformDiagnostics,
+    paper_search_with_diagnostics as _paper_search_with_diagnostics,
+)
 
 # ── Config singleton ──────────────────────────────────────────────────────
 _config: Optional[Config] = None
@@ -26,6 +29,32 @@ def _get_config() -> Config:
     return _config
 
 
+def _format_debug_section(diagnostics: list[PlatformDiagnostics]) -> str:
+    """Render compact diagnostics for client-visible debugging."""
+    lines = ["[debug]"]
+    for diag in diagnostics:
+        lines.append(f"platform={diag.platform}")
+        lines.append(f"enabled={diag.enabled}")
+        if diag.api_key_present is not None:
+            lines.append(f"api_key={'set' if diag.api_key_present else 'unset'}")
+        if diag.query:
+            lines.append(f"query={diag.query}")
+        if diag.request_url:
+            lines.append(f"request_url={diag.request_url}")
+        if diag.status_code is not None:
+            lines.append(f"status={diag.status_code}")
+        if diag.result_count is not None:
+            lines.append(f"result_count={diag.result_count}")
+        if diag.error:
+            lines.append(f"error={diag.error}")
+        if diag.exception_type:
+            lines.append(f"exception_type={diag.exception_type}")
+        lines.append("---")
+    if lines[-1] == "---":
+        lines.pop()
+    return "\n".join(lines)
+
+
 # ── MCP server ────────────────────────────────────────────────────────────
 mcp = FastMCP("paper-search-mcp")
 
@@ -35,11 +64,11 @@ mcp = FastMCP("paper-search-mcp")
     description="""Search academic papers across multiple platforms.
 
 Supported platforms: arxiv, semantic_scholar, google_scholar, crossref, pubmed, scopus, biorxiv, medrxiv, webofscience.
-If platforms is omitted, the tool uses the enabled default platforms from config.
+If platforms is omitted, the tool uses the enabled default platforms from environment configuration.
 
 Common query parameters:
 - query: search keywords
-- platforms: target sources, or config defaults if omitted
+- platforms: target sources, or env-backed defaults if omitted
 - max_results: per-platform result cap
 - year_from / year_to: publication year range
 - sort_by: relevance, date, or citations
@@ -51,7 +80,7 @@ Normalized post-search filters:
 
 Web of Science Starter notes:
 - Platform name: webofscience
-- Requires WOS_API_KEY / config.platforms.webofscience.api_key
+- Requires WOS_API_KEY / runtime config.platforms.webofscience.api_key
 - Advanced options must be passed through wos_options
 - Uses WoS Starter document search and returns WoS metadata, DOI, source title, year, keywords, and citation counts when available from your entitlement
 - Supports filtered / fielded search through q, including tags such as TS, AU, SO, PY, DO, IS, and DT
@@ -68,7 +97,7 @@ async def paper_search_tool(
     query: str = Field(..., description="Search keywords", min_length=1, max_length=500),
     platforms: Optional[List[str]] = Field(
         default=None,
-        description="Platform names to search. Empty = use config defaults.",
+        description="Platform names to search. Empty = use env-backed defaults.",
     ),
     max_results: int = Field(default=10, ge=1, le=100, description="Max results per platform"),
     year_from: Optional[int] = Field(default=None, description="Filter by start year"),
@@ -116,7 +145,7 @@ async def paper_search_tool(
 ) -> str:
     """Search academic papers across platforms."""
     config = _get_config()
-    papers = await _paper_search(
+    result = await _paper_search_with_diagnostics(
         query=query,
         platforms=platforms,
         max_results=max_results,
@@ -134,9 +163,16 @@ async def paper_search_tool(
         wos_options=wos_options,
         config=config,
     )
-    if not papers:
-        return "No papers found."
-    return "\n\n---\n\n".join(p.to_text() for p in papers)
+    if not result.papers:
+        text = "\n".join(result.failures) if result.failures else "No papers found."
+    else:
+        text = "\n\n---\n\n".join(p.to_text() for p in result.papers)
+
+    if config.debug_enabled:
+        debug_text = _format_debug_section(result.diagnostics)
+        text = f"{text}\n\n{debug_text}" if debug_text else text
+
+    return text
 
 # ── CLI ───────────────────────────────────────────────────────────────────
 app = typer.Typer(add_completion=False, help="paper-search-mcp — Academic paper search MCP server")
@@ -157,7 +193,7 @@ def run(
         None,
         "--config",
         "-c",
-        help="Path to config.yaml",
+        help="Deprecated and ignored. Configure the server with environment variables instead.",
     ),
 ) -> None:
     """Run the paper-search-mcp server (default when no subcommand is given)."""
@@ -184,7 +220,7 @@ def update_jcr(
         None,
         "--config",
         "-c",
-        help="Path to config.yaml",
+        help="Deprecated and ignored. Configure the server with environment variables instead.",
     ),
     force: bool = typer.Option(
         False,

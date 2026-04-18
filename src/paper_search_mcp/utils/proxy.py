@@ -27,7 +27,7 @@ def build_proxy_url(
 
 
 def parse_proxy_from_config(config: dict) -> Optional[str]:
-    """Extract proxy URL from a proxy config dict (as loaded from config.yaml)."""
+    """Extract proxy URL from a proxy config dict."""
     if not config:
         return None
     return build_proxy_url(

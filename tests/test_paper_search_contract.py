@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from datetime import datetime
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -16,6 +17,7 @@ from paper_search_mcp.config import Config
 from paper_search_mcp.models import Paper, WosSearchOptions
 from paper_search_mcp.search.biorxiv import BioRxivSearcher
 from paper_search_mcp.search.crossref import CrossRefSearcher
+from paper_search_mcp.search.webofscience import WebOfScienceSearcher
 from paper_search_mcp.tools.paper_search import (
     _build_search_kwargs,
     _sort_papers,
@@ -114,30 +116,124 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(CrossRefSearcher._map_sort("date"), "published")
         self.assertEqual(CrossRefSearcher._map_sort("citations"), "is-referenced-by-count")
 
-    def test_example_config_defines_medrxiv_platform(self) -> None:
-        config = Config(str(ROOT / "config.example.yaml"))
+    def test_env_config_defines_medrxiv_platform(self) -> None:
+        config = Config()
         self.assertIn("medrxiv", config.platforms)
         self.assertFalse(config.is_platform_enabled("medrxiv"))
+
+    def test_env_overrides_replace_file_config_usage(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "PAPER_SEARCH_DEFAULT_PLATFORMS": "crossref,medrxiv",
+                "PAPER_SEARCH_PLATFORM_MEDRXIV_ENABLED": "true",
+                "PAPER_SEARCH_MAX_CONCURRENT_SEARCHES": "9",
+                "PAPER_SEARCH_PLATFORM_CROSSREF_RATE_LIMIT_RPS": "4.5",
+                "CROSSREF_MAILTO": "bot@example.com",
+            },
+            clear=True,
+        ):
+            config = Config("ignored.yaml")
+
+        self.assertEqual(config.default_platforms, ["crossref", "medrxiv"])
+        self.assertTrue(config.is_platform_enabled("medrxiv"))
+        self.assertEqual(config.max_concurrent_searches, 9)
+        self.assertEqual(config.platform_config("crossref")["rate_limit_rps"], 4.5)
+        self.assertEqual(config.platform_config("crossref")["mailto"], "bot@example.com")
+
+    def test_env_default_platforms_allow_empty_list(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"PAPER_SEARCH_DEFAULT_PLATFORMS": "  "},
+            clear=True,
+        ):
+            config = Config()
+
+        self.assertEqual(config.default_platforms, [])
+
+    def test_debug_env_enables_diagnostics(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"PAPER_SEARCH_DEBUG": "true"},
+            clear=True,
+        ):
+            config = Config()
+
+        self.assertTrue(config.debug_enabled)
+
+    def test_paper_to_text_formats_extra_labels(self) -> None:
+        paper = Paper(
+            paper_id="demo",
+            title="Demo Paper",
+            authors=[],
+            abstract="",
+            url="https://example.test/demo",
+            source="crossref",
+            extra={
+                "page": "10-20",
+                "publisher": "ACM",
+                "raw_meta": {"count": 13},
+            },
+        )
+
+        text = paper.to_text()
+
+        self.assertIn("Page: 10-20", text)
+        self.assertIn("Publisher: ACM", text)
+        self.assertIn("Raw Meta: 13", text)
+
+    def test_webofscience_record_omits_duplicate_uid_and_doctype(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": "true",
+                "WOS_API_KEY": "fake-key",
+            },
+            clear=True,
+        ):
+            searcher = WebOfScienceSearcher(Config())
+
+        paper = searcher._parse_record(
+            {
+                "uid": "WOS:123",
+                "title": "Cleaner WoS output",
+                "source": {
+                    "sourceTitle": "Safety Science",
+                    "publishYear": 2024,
+                    "volume": "145",
+                    "issue": "1",
+                    "pages": {"range": "945-953", "count": 9},
+                },
+                "identifiers": {"doi": "10.1000/example"},
+                "types": ["Article"],
+            }
+        )
+
+        self.assertIsNotNone(paper)
+        assert paper is not None
+        self.assertEqual(paper.extra["pages"], "945-953")
+        self.assertNotIn("uid", paper.extra)
+        self.assertNotIn("doctype", paper.extra)
+
+        text = paper.to_text()
+        self.assertIn("Categories: Article", text)
+        self.assertIn("Pages: 945-953", text)
+        self.assertNotIn("uid:", text)
+        self.assertNotIn("doctype:", text)
 
 
 class BioRxivSearcherTests(unittest.IsolatedAsyncioTestCase):
     async def test_search_filters_recent_records_by_free_text_query(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / "config.yaml"
-            config_path.write_text(
-                (
-                    "search:\n"
-                    "  default_platforms:\n"
-                    "    - biorxiv\n"
-                    "platforms:\n"
-                    "  biorxiv:\n"
-                    "    enabled: true\n"
-                    "    rate_limit_rps: 1.0\n"
-                ),
-                encoding="utf-8",
-            )
-
-            searcher = BioRxivSearcher(Config(str(config_path)))
+        with patch.dict(
+            os.environ,
+            {
+                "PAPER_SEARCH_DEFAULT_PLATFORMS": "biorxiv",
+                "PAPER_SEARCH_PLATFORM_BIORXIV_ENABLED": "true",
+                "PAPER_SEARCH_PLATFORM_BIORXIV_RATE_LIMIT_RPS": "1.0",
+            },
+            clear=True,
+        ):
+            searcher = BioRxivSearcher(Config())
 
             async def fake_get_json(url: str):
                 self.assertNotIn("?category=", url)
@@ -176,6 +272,8 @@ class ReadmeContractTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("wos_options", readme)
         self.assertIn("document_type", readme)
+        self.assertIn("mcpServers", readme)
+        self.assertIn("\"env\":", readme)
 
 
 if __name__ == "__main__":

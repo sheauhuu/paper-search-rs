@@ -62,6 +62,28 @@ class BaseSearcher(ABC):
         # Platform-specific fields (e.g., api_key)
         self.api_key: Optional[str] = plat_cfg.get("api_key") or None
         self.max_results: int = plat_cfg.get("max_results", config.max_results_per_platform)
+        self.last_diagnostics: Dict[str, Any] = {
+            "platform": self.platform_name,
+            "enabled": True,
+            "api_key_present": bool(self.api_key),
+        }
+
+    def reset_diagnostics(self, **kwargs: Any) -> None:
+        """Reset per-search diagnostics for the next request."""
+        self.last_diagnostics = {
+            "platform": self.platform_name,
+            "enabled": True,
+            "api_key_present": bool(self.api_key),
+        }
+        self.last_diagnostics.update(kwargs)
+
+    def update_diagnostics(self, **kwargs: Any) -> None:
+        """Merge additional diagnostic fields for the current request."""
+        self.last_diagnostics.update(kwargs)
+
+    def diagnostics_snapshot(self) -> Dict[str, Any]:
+        """Return a copy of the latest diagnostics."""
+        return dict(self.last_diagnostics)
 
     @abstractmethod
     async def search(self, query: str, **kwargs: Any) -> List[Paper]:

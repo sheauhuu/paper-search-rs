@@ -63,8 +63,14 @@ class WebOfScienceSearcher(BaseSearcher):
         journal: Optional[str] = None,
         **kwargs: Any,
     ) -> List[Paper]:
+        self.reset_diagnostics(
+            query=query,
+            request_url=f"{self._api_url}/documents",
+        )
         if not self.api_key:
-            logger.error("[webofscience] API key required")
+            message = "Web of Science request failed: WOS_API_KEY is not configured."
+            self.update_diagnostics(error=message)
+            logger.error(f"[webofscience] {message}")
             return []
 
         max_results = max_results or self.max_results
@@ -78,6 +84,7 @@ class WebOfScienceSearcher(BaseSearcher):
             issn=kwargs.get("issn"),
             document_type=kwargs.get("document_type"),
         )
+        self.update_diagnostics(query=wos_query)
 
         params: dict[str, Any] = {
             "q": wos_query,
@@ -108,10 +115,25 @@ class WebOfScienceSearcher(BaseSearcher):
                 f"{self._api_url}/documents", params=params, headers=headers,
             )
             self._reset_fallback()
-            return self._parse_response(data)
+            papers = self._parse_response(data)
+            self.update_diagnostics(
+                request_url=f"{self._api_url}/documents",
+                status_code=200,
+                result_count=len(papers),
+                error=None,
+            )
+            return papers
 
         except Exception as e:
-            logger.error(f"[webofscience] Search failed: {e}")
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            message = self._format_search_error(status_code, e)
+            self.update_diagnostics(
+                request_url=f"{self._api_url}/documents",
+                status_code=status_code,
+                error=message,
+                exception_type=type(e).__name__,
+            )
+            logger.error(f"[webofscience] {message}")
             return []
 
     async def _request_with_fallback(self, url: str, **kwargs: Any) -> Any:
@@ -128,8 +150,27 @@ class WebOfScienceSearcher(BaseSearcher):
             if should_fallback and self._switch_to_fallback():
                 # Retry with new version URL
                 new_url = f"{self._api_url}/documents"
+                self.update_diagnostics(request_url=new_url)
                 return await self._get_json(new_url, **kwargs)
             raise
+
+    @staticmethod
+    def _format_search_error(status_code: Optional[int], exc: Exception) -> str:
+        if status_code == 401:
+            return (
+                "Web of Science request failed: 401 Unauthorized. "
+                "Check WOS_API_KEY and WoS Starter API entitlement."
+            )
+        if status_code == 403:
+            return (
+                "Web of Science request failed: 403 Forbidden. "
+                "Check WoS Starter API entitlement and account permissions."
+            )
+        if status_code == 404:
+            return "Web of Science request failed: 404 Not Found."
+        if status_code is not None:
+            return f"Web of Science request failed: HTTP {status_code}."
+        return f"Web of Science request failed: {exc}"
 
     def _build_query(
         self,
@@ -207,6 +248,22 @@ class WebOfScienceSearcher(BaseSearcher):
                 papers.append(paper)
         return papers
 
+    @staticmethod
+    def _format_pages(pages: Any) -> Optional[str]:
+        """Normalize WoS page metadata for user-facing output."""
+        if isinstance(pages, str):
+            return pages or None
+        if isinstance(pages, dict):
+            if pages.get("range"):
+                return str(pages["range"])
+            begin = pages.get("begin")
+            end = pages.get("end")
+            if begin and end:
+                return f"{begin}-{end}"
+            if pages.get("count"):
+                return str(pages["count"])
+        return None
+
     def _parse_record(self, record: dict) -> Optional[Paper]:
         try:
             uid = record.get("uid", "")
@@ -274,11 +331,9 @@ class WebOfScienceSearcher(BaseSearcher):
                 journal=journal,
                 year=year,
                 extra={
-                    "uid": uid,
-                    "doctype": types[0] if types else None,
                     "volume": volume,
                     "issue": issue,
-                    "pages": pages,
+                    "pages": self._format_pages(pages),
                 },
             )
         except Exception as e:

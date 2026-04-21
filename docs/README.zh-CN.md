@@ -108,46 +108,79 @@ paper-search-mcp -t streamable-http --port 8000
 
 ### 核心搜索配置
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PAPER_SEARCH_DEFAULT_PLATFORMS` | `arxiv,semantic_scholar,google_scholar,crossref` | 默认搜索平台 |
-| `PAPER_SEARCH_MAX_RESULTS_PER_PLATFORM` | `10` | 每个平台最大结果数 |
-| `PAPER_SEARCH_MAX_CONCURRENT_SEARCHES` | `5` | 并发搜索数 |
-| `PAPER_SEARCH_TIMEOUT_SECONDS` | `30` | 请求超时 |
-| `PAPER_SEARCH_DEBUG` | `false` | 在工具输出里附带诊断信息 |
+### 平台启用
+
+**`PAPER_SEARCH_DEFAULT_PLATFORMS`** 是唯一的启用开关。列出的平台即为启用；未列出的平台不会出现在 AI 看到的工具描述中。
+
+```
+PAPER_SEARCH_DEFAULT_PLATFORMS=arxiv,crossref,webofscience
+```
+
+### 核心搜索配置
+
+| 变量 | 必选 | 默认值 | 说明 |
+|------|------|--------|------|
+| `PAPER_SEARCH_DEFAULT_PLATFORMS` | 否 | `arxiv,semantic_scholar,google_scholar,crossref` | 启用的平台列表（逗号分隔） |
+| `PAPER_SEARCH_MAX_RESULTS_PER_PLATFORM` | 否 | `10` | 每个平台最大结果数 |
+| `PAPER_SEARCH_MAX_CONCURRENT_SEARCHES` | 否 | `5` | 并发搜索数 |
+| `PAPER_SEARCH_TIMEOUT_SECONDS` | 否 | `30` | 请求超时（秒） |
+| `PAPER_SEARCH_CACHE_MAX_SIZE` | 否 | `100` | LRU 缓存大小 |
+| `PAPER_SEARCH_CACHE_TTL_SECONDS` | 否 | `3600` | 缓存过期时间（秒） |
+| `PAPER_SEARCH_RETRY_MAX_RETRIES` | 否 | `3` | 重试次数 |
+| `PAPER_SEARCH_RETRY_INITIAL_DELAY_SECONDS` | 否 | `1.0` | 初始重试延迟（秒） |
+| `PAPER_SEARCH_RETRY_MAX_DELAY_SECONDS` | 否 | `30.0` | 最大重试延迟（秒） |
+| `PAPER_SEARCH_DEBUG` | 否 | `false` | 在工具输出里附带诊断信息 |
 
 ### 平台级配置
 
-格式：`PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`
+格式：`PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`，均为可选。
 
-示例：
+| 字段 | 示例 | 说明 |
+|------|------|------|
+| `..._MAX_RESULTS` | `PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS=25` | 覆盖该平台的最大结果数 |
+| `..._RATE_LIMIT_RPS` | `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5` | 该平台的请求速率限制（次/秒） |
+| `..._PROXY` | `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true` | 为该平台启用代理 |
 
-- `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5`
-- `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true`
-- `PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS=25`
+`<PLATFORM>` 名称：`ARXIV`、`SEMANTIC_SCHOLAR`、`GOOGLE_SCHOLAR`、`CROSSREF`、`PUBMED`、`SCOPUS`、`BIORXIV`、`MEDRXIV`、`WEBOFSCIENCE`。
 
-平台的启用/停用由 `PAPER_SEARCH_DEFAULT_PLATFORMS` 控制，列在其中的平台即为启用状态。
+### 凭证
 
-### 凭证相关
+仅当对应平台启用时才需要。
 
-- `CROSSREF_MAILTO`
-- `SEMANTIC_SCHOLAR_API_KEY`
-- `PUBMED_API_KEY`
-- `SCOPUS_API_KEY`
-- `WOS_API_KEY`
+| 变量 | 何时必选 | 说明 |
+|------|----------|------|
+| `SEMANTIC_SCHOLAR_API_KEY` | 可选 | 提高速率限制 |
+| `CROSSREF_MAILTO` | 可选 | 加入 CrossRef 礼貌池（更快响应） |
+| `PUBMED_API_KEY` | PubMed 启用时 | PubMed API key |
+| `SCOPUS_API_KEY` | Scopus 启用时 | Scopus API key |
+| `WOS_API_KEY` | Web of Science 启用时 | WoS Starter API key |
 
-### 代理相关
+### 代理
 
-- `HTTP_PROXY`
-- `HTTPS_PROXY`
-- `SOCKS_PROXY`
+全部可选。全局生效，或通过 `..._PROXY=true` 为单个平台启用。
 
-### JCR 相关
+| 变量 | 说明 |
+|------|------|
+| `HTTP_PROXY` | HTTP 代理地址 |
+| `HTTPS_PROXY` | HTTPS 代理地址 |
+| `SOCKS_PROXY` | SOCKS5 代理地址 |
 
-- `PAPER_SEARCH_JCR_ENABLED`
-- `PAPER_SEARCH_JCR_DATA_DIR`
-- `PAPER_SEARCH_JCR_AUTO_UPDATE`
-- `PAPER_SEARCH_JCR_MAX_AGE_DAYS`
+### JCR / 期刊指标
+
+JCR 是独立于平台的功能模块。启用后（且本地有 JCR 数据），搜索结果会自动补充影响因子、JCR 分区、中科院分区、CCF 等级和预警名单。
+
+| 变量 | 必选 | 默认值 | 说明 |
+|------|------|--------|------|
+| `PAPER_SEARCH_JCR_ENABLED` | 否 | `false` | 启用 JCR 补充和筛选 |
+| `PAPER_SEARCH_JCR_DATA_DIR` | 否 | `~/.paper-search-mcp/jcr` | JCR 数据目录。不设置时默认使用 `~/.paper-search-mcp/jcr`。数据通过 `paper-search-mcp update-jcr` 下载 |
+| `PAPER_SEARCH_JCR_AUTO_UPDATE` | 否 | `false` | 搜索时自动更新过期数据 |
+| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | 否 | `30` | 数据过期阈值（天） |
+
+首次使用 JCR 数据：
+
+```bash
+paper-search-mcp update-jcr
+```
 
 ## 8. 常见查询示例
 

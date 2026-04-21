@@ -169,57 +169,79 @@ The server reads configuration from environment variables only.
 - `-c /path/to/config.yaml` is supplied, or
 - a legacy `config.yaml` is detected in an old auto-load location.
 
+### Platform enabling
+
+**`PAPER_SEARCH_DEFAULT_PLATFORMS`** is the sole enable switch. Platforms listed here are enabled; all others are disabled. The tool description exposed to AI clients only mentions enabled platforms.
+
+```
+PAPER_SEARCH_DEFAULT_PLATFORMS=arxiv,crossref,webofscience
+```
+
 ### Core search settings
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PAPER_SEARCH_DEFAULT_PLATFORMS` | `arxiv,semantic_scholar,google_scholar,crossref` | Comma-separated default platform list |
-| `PAPER_SEARCH_MAX_RESULTS_PER_PLATFORM` | `10` | Per-platform result cap |
-| `PAPER_SEARCH_MAX_CONCURRENT_SEARCHES` | `5` | Fan-out concurrency limit |
-| `PAPER_SEARCH_TIMEOUT_SECONDS` | `30` | HTTP timeout |
-| `PAPER_SEARCH_CACHE_MAX_SIZE` | `100` | LRU cache size |
-| `PAPER_SEARCH_CACHE_TTL_SECONDS` | `3600` | Cache TTL in seconds |
-| `PAPER_SEARCH_RETRY_MAX_RETRIES` | `3` | Retry count |
-| `PAPER_SEARCH_RETRY_INITIAL_DELAY_SECONDS` | `1.0` | Initial retry delay |
-| `PAPER_SEARCH_RETRY_MAX_DELAY_SECONDS` | `30.0` | Max retry delay |
-| `PAPER_SEARCH_DEBUG` | `false` | Append per-platform diagnostics to tool output |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PAPER_SEARCH_DEFAULT_PLATFORMS` | No | `arxiv,semantic_scholar,google_scholar,crossref` | Comma-separated list of enabled platforms |
+| `PAPER_SEARCH_MAX_RESULTS_PER_PLATFORM` | No | `10` | Per-platform result cap |
+| `PAPER_SEARCH_MAX_CONCURRENT_SEARCHES` | No | `5` | Fan-out concurrency limit |
+| `PAPER_SEARCH_TIMEOUT_SECONDS` | No | `30` | HTTP timeout (seconds) |
+| `PAPER_SEARCH_CACHE_MAX_SIZE` | No | `100` | LRU cache size |
+| `PAPER_SEARCH_CACHE_TTL_SECONDS` | No | `3600` | Cache TTL (seconds) |
+| `PAPER_SEARCH_RETRY_MAX_RETRIES` | No | `3` | Retry count |
+| `PAPER_SEARCH_RETRY_INITIAL_DELAY_SECONDS` | No | `1.0` | Initial retry delay (seconds) |
+| `PAPER_SEARCH_RETRY_MAX_DELAY_SECONDS` | No | `30.0` | Max retry delay (seconds) |
+| `PAPER_SEARCH_DEBUG` | No | `false` | Append per-platform diagnostics to tool output |
 
 ### Per-platform overrides
 
-Pattern: `PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`
+Pattern: `PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`. All optional.
 
-| Pattern | Example |
-|---------|---------|
-| `..._MAX_RESULTS` | `PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS=25` |
-| `..._RATE_LIMIT_RPS` | `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5` |
-| `..._PROXY` | `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true` |
+| Field | Example | Description |
+|-------|---------|-------------|
+| `..._MAX_RESULTS` | `PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS=25` | Override per-platform result cap |
+| `..._RATE_LIMIT_RPS` | `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5` | Requests per second limit |
+| `..._PROXY` | `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true` | Enable proxy for this platform |
 
-Supported `<PLATFORM>` names:
+Supported `<PLATFORM>` names: `ARXIV`, `SEMANTIC_SCHOLAR`, `GOOGLE_SCHOLAR`, `CROSSREF`, `PUBMED`, `SCOPUS`, `BIORXIV`, `MEDRXIV`, `WEBOFSCIENCE`.
 
-- `ARXIV`
-- `SEMANTIC_SCHOLAR`
-- `GOOGLE_SCHOLAR`
-- `CROSSREF`
-- `PUBMED`
-- `SCOPUS`
-- `BIORXIV`
-- `MEDRXIV`
-- `WEBOFSCIENCE`
+### Credentials
 
-### Credentials, proxy, and JCR settings
+Required only when the corresponding platform is enabled.
 
-| Variable | Used by |
-|----------|---------|
-| `SEMANTIC_SCHOLAR_API_KEY` | Semantic Scholar |
-| `CROSSREF_MAILTO` | CrossRef polite pool |
-| `PUBMED_API_KEY` | PubMed |
-| `SCOPUS_API_KEY` | Scopus |
-| `WOS_API_KEY` | Web of Science Starter |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `SOCKS_PROXY` | Proxy settings |
-| `PAPER_SEARCH_JCR_ENABLED` | Enable JCR enrichment |
-| `PAPER_SEARCH_JCR_DATA_DIR` | Custom JCR data directory |
-| `PAPER_SEARCH_JCR_AUTO_UPDATE` | Auto-update stale JCR data |
-| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | JCR staleness threshold |
+| Variable | Required when | Description |
+|----------|---------------|-------------|
+| `SEMANTIC_SCHOLAR_API_KEY` | Optional | Higher rate limit for Semantic Scholar |
+| `CROSSREF_MAILTO` | Optional | CrossRef polite pool (faster response) |
+| `PUBMED_API_KEY` | PubMed enabled | PubMed API key |
+| `SCOPUS_API_KEY` | Scopus enabled | Scopus API key |
+| `WOS_API_KEY` | Web of Science enabled | WoS Starter API key |
+
+### Proxy
+
+All optional. Applied globally or per-platform via `..._PROXY=true`.
+
+| Variable | Description |
+|----------|-------------|
+| `HTTP_PROXY` | HTTP proxy URL |
+| `HTTPS_PROXY` | HTTPS proxy URL |
+| `SOCKS_PROXY` | SOCKS5 proxy URL |
+
+### JCR / journal metrics
+
+JCR enrichment is a standalone feature, independent of platform selection. When enabled and local JCR data is available, search results are enriched with Impact Factor, JCR quartile, CAS quartile, CCF rank, and warning list status.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PAPER_SEARCH_JCR_ENABLED` | No | `false` | Enable JCR enrichment and filters |
+| `PAPER_SEARCH_JCR_DATA_DIR` | No | `~/.paper-search-mcp/jcr` | JCR data directory. Defaults to `~/.paper-search-mcp/jcr` if not set. Data is downloaded via `paper-search-mcp update-jcr` |
+| `PAPER_SEARCH_JCR_AUTO_UPDATE` | No | `false` | Auto-update stale JCR data on search |
+| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | No | `30` | Staleness threshold (days) before update is needed |
+
+To set up JCR data for the first time:
+
+```bash
+paper-search-mcp update-jcr
+```
 
 ## Debugging
 

@@ -13,7 +13,7 @@ from loguru import logger
 from ..config import Config
 from ..jcr.loader import load_jcr_index
 from ..jcr.models import JcrIndex
-from ..jcr.updater import get_data_dir, needs_update, save_version, update_jcr_data
+from ..jcr.updater import get_data_dir
 from ..models import Paper, WosSearchOptions
 from ..search import SEARCHER_REGISTRY
 
@@ -302,7 +302,7 @@ async def paper_search_with_diagnostics(
             )
             diagnostics.append(diag)
             if explicit_platforms:
-                failures.append(diag.error)
+                failures.append(diag.error or f"{name} failed")
             continue
         searchers[name] = cls(config)
 

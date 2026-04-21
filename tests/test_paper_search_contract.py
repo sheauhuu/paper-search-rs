@@ -13,14 +13,14 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from paper_search_mcp import __main__ as main_module
-from paper_search_mcp import config as config_module
-from paper_search_mcp.config import Config
-from paper_search_mcp.models import Paper, WosSearchOptions
-from paper_search_mcp.search.biorxiv import BioRxivSearcher
-from paper_search_mcp.search.crossref import CrossRefSearcher
-from paper_search_mcp.search.webofscience import WebOfScienceSearcher
-from paper_search_mcp.tools.paper_search import (
+from paper_search_mcp import __main__ as main_module  # noqa: E402
+from paper_search_mcp import config as config_module  # noqa: E402
+from paper_search_mcp.config import Config  # noqa: E402
+from paper_search_mcp.models import Paper, WosSearchOptions  # noqa: E402
+from paper_search_mcp.search.biorxiv import BioRxivSearcher  # noqa: E402
+from paper_search_mcp.search.crossref import CrossRefSearcher  # noqa: E402
+from paper_search_mcp.search.webofscience import WebOfScienceSearcher  # noqa: E402
+from paper_search_mcp.tools.paper_search import (  # noqa: E402
     _build_search_kwargs,
     _sort_papers,
     _validate_platform_specific_options,

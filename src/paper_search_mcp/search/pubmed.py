@@ -108,8 +108,8 @@ class PubMedSearcher(BaseSearcher):
             doi = doi_elem.text if doi_elem is not None else None
 
             return Paper(
-                paper_id=pmid,
-                title=title,
+                paper_id=pmid or "",
+                title=title or "",
                 authors=authors,
                 abstract=abstract or "",
                 url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",

@@ -11,7 +11,6 @@ import time
 from collections import OrderedDict
 from typing import Any, Optional
 
-from loguru import logger
 
 
 class RequestCache:

@@ -8,7 +8,6 @@ Fallback: read CSV files and build index manually.
 from __future__ import annotations
 
 import csv
-import os
 import re
 import sqlite3
 from pathlib import Path

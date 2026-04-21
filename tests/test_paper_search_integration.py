@@ -12,11 +12,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from paper_search_mcp import __main__ as main_module
-from paper_search_mcp import config as config_module
-from paper_search_mcp.config import Config
-from paper_search_mcp.models import Paper
-from paper_search_mcp.tools import paper_search as paper_search_module
+from paper_search_mcp import __main__ as main_module  # noqa: E402
+from paper_search_mcp import config as config_module  # noqa: E402
+from paper_search_mcp.config import Config  # noqa: E402
+from paper_search_mcp.models import Paper  # noqa: E402
+from paper_search_mcp.tools import paper_search as paper_search_module  # noqa: E402
 
 
 class _RecordingSearcher:

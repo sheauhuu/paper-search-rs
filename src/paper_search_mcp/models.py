@@ -119,7 +119,7 @@ class Paper(BaseModel):
         if self.ccf_rank:
             lines.append(f"CCF Rank: {self.ccf_rank}")
         if self.is_warning:
-            lines.append(f"Warning: journal on warning list")
+            lines.append("Warning: journal on warning list")
         if self.extra:
             for k, v in self.extra.items():
                 formatted_value = self._format_extra_value(v)

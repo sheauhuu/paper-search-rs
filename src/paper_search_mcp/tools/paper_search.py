@@ -304,17 +304,6 @@ async def paper_search_with_diagnostics(
             if explicit_platforms:
                 failures.append(diag.error)
             continue
-        if not config.is_platform_enabled(name):
-            logger.info(f"Platform {name} is disabled in config, skipping")
-            diag = PlatformDiagnostics(
-                platform=name,
-                enabled=False,
-                error=f"{name} is disabled by configuration.",
-            )
-            diagnostics.append(diag)
-            if explicit_platforms:
-                failures.append(diag.error)
-            continue
         searchers[name] = cls(config)
 
     if not searchers:

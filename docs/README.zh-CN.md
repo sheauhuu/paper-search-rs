@@ -85,9 +85,6 @@ paper-search-mcp -t streamable-http --port 8000
       "args": [],
       "env": {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": "crossref,arxiv,webofscience",
-        "PAPER_SEARCH_PLATFORM_CROSSREF_ENABLED": "true",
-        "PAPER_SEARCH_PLATFORM_ARXIV_ENABLED": "true",
-        "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": "true",
         "CROSSREF_MAILTO": "you@example.com",
         "WOS_API_KEY": "your-wos-key"
       }
@@ -119,16 +116,17 @@ paper-search-mcp -t streamable-http --port 8000
 | `PAPER_SEARCH_TIMEOUT_SECONDS` | `30` | 请求超时 |
 | `PAPER_SEARCH_DEBUG` | `false` | 在工具输出里附带诊断信息 |
 
-### 平台开关格式
+### 平台级配置
 
 格式：`PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`
 
 示例：
 
-- `PAPER_SEARCH_PLATFORM_CROSSREF_ENABLED=true`
-- `PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED=true`
 - `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5`
 - `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true`
+- `PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS=25`
+
+平台的启用/停用由 `PAPER_SEARCH_DEFAULT_PLATFORMS` 控制，列在其中的平台即为启用状态。
 
 ### 凭证相关
 

@@ -122,6 +122,8 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
             config = Config()
         self.assertIn("medrxiv", config.platforms)
+        # medrxiv is not in default_platforms, so not enabled
+        self.assertNotIn("medrxiv", config.default_platforms)
         self.assertFalse(config.is_platform_enabled("medrxiv"))
 
     def test_env_overrides_apply_without_config_files(self) -> None:
@@ -129,7 +131,6 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
             os.environ,
             {
                 "PAPER_SEARCH_DEFAULT_PLATFORMS": "crossref,medrxiv",
-                "PAPER_SEARCH_PLATFORM_MEDRXIV_ENABLED": "true",
                 "PAPER_SEARCH_MAX_CONCURRENT_SEARCHES": "9",
                 "PAPER_SEARCH_PLATFORM_CROSSREF_RATE_LIMIT_RPS": "4.5",
                 "CROSSREF_MAILTO": "bot@example.com",
@@ -204,7 +205,7 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(
             os.environ,
             {
-                "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": "true",
+                "PAPER_SEARCH_DEFAULT_PLATFORMS": "webofscience",
                 "WOS_API_KEY": "fake-key",
             },
             clear=True,
@@ -244,7 +245,7 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(
             os.environ,
             {
-                "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": "true",
+                "PAPER_SEARCH_DEFAULT_PLATFORMS": "webofscience",
                 "WOS_API_KEY": "fake-key",
             },
             clear=True,
@@ -275,7 +276,6 @@ class BioRxivSearcherTests(unittest.IsolatedAsyncioTestCase):
             os.environ,
             {
                 "PAPER_SEARCH_DEFAULT_PLATFORMS": "biorxiv",
-                "PAPER_SEARCH_PLATFORM_BIORXIV_ENABLED": "true",
                 "PAPER_SEARCH_PLATFORM_BIORXIV_RATE_LIMIT_RPS": "1.0",
             },
             clear=True,

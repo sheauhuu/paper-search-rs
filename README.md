@@ -77,9 +77,6 @@ Example with explicit environment variables:
       "args": [],
       "env": {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": "crossref,arxiv,webofscience",
-        "PAPER_SEARCH_PLATFORM_CROSSREF_ENABLED": "true",
-        "PAPER_SEARCH_PLATFORM_ARXIV_ENABLED": "true",
-        "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": "true",
         "CROSSREF_MAILTO": "you@example.com",
         "WOS_API_KEY": "your-wos-key"
       }
@@ -193,7 +190,6 @@ Pattern: `PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`
 
 | Pattern | Example |
 |---------|---------|
-| `..._ENABLED` | `PAPER_SEARCH_PLATFORM_CROSSREF_ENABLED=true` |
 | `..._MAX_RESULTS` | `PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS=25` |
 | `..._RATE_LIMIT_RPS` | `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5` |
 | `..._PROXY` | `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true` |

@@ -79,15 +79,15 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
         "timeout_seconds": 30,
     },
     "platforms": {
-        "arxiv": {"enabled": True, "max_results": 50, "rate_limit_rps": 0.33},
-        "google_scholar": {"enabled": True, "max_results": 20, "rate_limit_rps": 0.5, "proxy": True},
-        "semantic_scholar": {"enabled": True, "max_results": 100, "rate_limit_rps": 3.0, "api_key": ""},
-        "crossref": {"enabled": True, "max_results": 100, "rate_limit_rps": 3.0, "mailto": ""},
-        "pubmed": {"enabled": False, "api_key": "", "rate_limit_rps": 3.0},
-        "scopus": {"enabled": False, "api_key": "", "rate_limit_rps": 2.0},
-        "biorxiv": {"enabled": False, "rate_limit_rps": 1.0},
-        "medrxiv": {"enabled": False, "rate_limit_rps": 1.0},
-        "webofscience": {"enabled": False, "api_key": "", "rate_limit_rps": 5.0, "max_results": 50},
+        "arxiv": {"max_results": 50, "rate_limit_rps": 0.33},
+        "google_scholar": {"max_results": 20, "rate_limit_rps": 0.5, "proxy": True},
+        "semantic_scholar": {"max_results": 100, "rate_limit_rps": 3.0, "api_key": ""},
+        "crossref": {"max_results": 100, "rate_limit_rps": 3.0, "mailto": ""},
+        "pubmed": {"api_key": "", "rate_limit_rps": 3.0},
+        "scopus": {"api_key": "", "rate_limit_rps": 2.0},
+        "biorxiv": {"rate_limit_rps": 1.0},
+        "medrxiv": {"rate_limit_rps": 1.0},
+        "webofscience": {"api_key": "", "rate_limit_rps": 5.0, "max_results": 50},
     },
     "proxy": {
         "http": "",
@@ -193,7 +193,6 @@ def _apply_env_overrides(config: dict[str, Any]) -> None:
 
     for platform_name, platform_config in config["platforms"].items():
         prefix = f"PAPER_SEARCH_PLATFORM_{platform_name.upper()}_"
-        platform_config["enabled"] = _parse_bool(f"{prefix}ENABLED", platform_config["enabled"])
         platform_config["max_results"] = _parse_int(
             f"{prefix}MAX_RESULTS",
             platform_config.get("max_results", config["search"]["max_results_per_platform"]),
@@ -268,7 +267,7 @@ class Config:
         return self.platforms.get(name, {})
 
     def is_platform_enabled(self, name: str) -> bool:
-        return self.platform_config(name).get("enabled", False)
+        return name in self.default_platforms
 
     @property
     def proxy(self) -> dict:
@@ -295,16 +294,8 @@ class Config:
         return bool(self.debug.get("enabled", False))
 
     def enabled_platforms(self) -> List[str]:
-        """Return list of enabled platform names, respecting default_platforms order."""
-        platforms = []
-        for name in self.default_platforms:
-            if self.is_platform_enabled(name):
-                platforms.append(name)
-        # Add any enabled platforms not in default list
-        for name, cfg in self.platforms.items():
-            if cfg.get("enabled", False) and name not in platforms:
-                platforms.append(name)
-        return platforms
+        """Return list of enabled platform names (= default_platforms)."""
+        return list(self.default_platforms)
 
     def to_dict(self) -> dict:
         return deepcopy(self._raw)

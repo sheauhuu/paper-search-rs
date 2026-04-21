@@ -68,45 +68,59 @@ def _format_debug_section(diagnostics: list[PlatformDiagnostics]) -> str:
 mcp = FastMCP("paper-search-mcp")
 
 
-@mcp.tool(
-    name="paper_search",
-    description="""Search academic papers across multiple platforms.
+def _build_tool_description(config: Config) -> str:
+    """Build config-aware tool description exposing only enabled platforms."""
+    enabled = config.enabled_platforms()
+    if not enabled:
+        return "Search academic papers. No platforms are currently enabled."
 
-Supported platforms: arxiv, semantic_scholar, google_scholar, crossref, pubmed, scopus, biorxiv, medrxiv, webofscience.
-If platforms is omitted, the tool uses the enabled default platforms from environment configuration.
+    parts = [
+        f"Search academic papers across: {', '.join(enabled)}.",
+        "If platforms is omitted, all enabled platforms are searched.",
+        "",
+        "Common query parameters:",
+        "- query: search keywords",
+        "- platforms: target sources, or all enabled platforms if omitted",
+        "- max_results: per-platform result cap",
+        "- year_from / year_to: publication year range",
+        "- sort_by: relevance, date, or citations",
+        "",
+        "Normalized post-search filters:",
+        "- author: author name keyword filter",
+        "- journal: journal/source name keyword filter",
+        "- min_citations: keep only papers with citations >= value",
+    ]
 
-Common query parameters:
-- query: search keywords
-- platforms: target sources, or env-backed defaults if omitted
-- max_results: per-platform result cap
-- year_from / year_to: publication year range
-- sort_by: relevance, date, or citations
+    if "webofscience" in enabled:
+        parts.extend([
+            "",
+            "Web of Science Starter notes:",
+            "- Advanced options: pass through wos_options",
+            "- Supports fielded search via query: TS, AU, SO, PY, DO, IS, DT tags",
+            "- Example: TS=(machine learning) AND PY=(2020-2024)",
+            "- wos_options fields: doi, issn, document_type, page",
+        ])
 
-Normalized post-search filters:
-- author: author name keyword filter
-- journal: journal/source name keyword filter
-- min_citations: keep only papers with citations >= value
+    if config.jcr.get("enabled"):
+        parts.extend([
+            "",
+            "JCR / journal metrics (requires local JCR data):",
+            "- Impact Factor, JCR quartile, CAS quartile, CCF rank, warning list",
+            "- Filters: min_if, jcr_quartile, cas_quartile, ccf_rank, exclude_warning",
+        ])
 
-Web of Science Starter notes:
-- Platform name: webofscience
-- Requires WOS_API_KEY / runtime config.platforms.webofscience.api_key
-- Advanced options must be passed through wos_options
-- Uses WoS Starter document search and returns WoS metadata, DOI, source title, year, keywords, and citation counts when available from your entitlement
-- Supports filtered / fielded search through q, including tags such as TS, AU, SO, PY, DO, IS, and DT
-- For WoS-only searches, the query can be plain keywords or an advanced WoS field-tag query such as TS=(machine learning) AND PY=(2020-2024)
-- Exposed WoS-native options are doi, issn, document_type, and page
+    parts.append(
+        "\nReturns plain-text paper records including title, authors, abstract, DOI, "
+        "URL, citations, journal metadata, and JCR fields when available."
+    )
+    return "\n".join(parts)
 
-JCR / journal metrics (requires local JCR data loaded via update-jcr):
-- Impact Factor, JCR quartile, CAS quartile, CCF rank, and warning list status
-- Use min_if, jcr_quartile, cas_quartile, ccf_rank, exclude_warning to filter
 
-Returns plain-text paper records including title, authors, abstract, DOI, URL, citations, journal metadata, and JCR fields when available.""",
-)
 async def paper_search_tool(
     query: str = Field(..., description="Search keywords", min_length=1, max_length=500),
     platforms: Optional[List[str]] = Field(
         default=None,
-        description="Platform names to search. Empty = use env-backed defaults.",
+        description="Platform names to search. Empty = use all enabled platforms.",
     ),
     max_results: int = Field(default=10, ge=1, le=100, description="Max results per platform"),
     year_from: Optional[int] = Field(default=None, description="Filter by start year"),
@@ -183,6 +197,13 @@ async def paper_search_tool(
 
     return text
 
+
+# Register tool with default config at import time (for tests, introspection).
+# Overwritten in run() with config-aware description after env is loaded.
+mcp.tool(name="paper_search", description=_build_tool_description(_get_config()))(
+    paper_search_tool
+)
+
 # ── CLI ───────────────────────────────────────────────────────────────────
 app = typer.Typer(add_completion=False, help="paper-search-mcp — Academic paper search MCP server")
 
@@ -215,6 +236,11 @@ def run(
     _config = _load_runtime_config(config_path)
     enabled = _config.enabled_platforms()
     logger.info(f"paper-search-mcp starting | enabled platforms: {', '.join(enabled)}")
+
+    # Re-register tool with config-aware description (only mentions enabled platforms)
+    mcp.tool(name="paper_search", description=_build_tool_description(_config))(
+        paper_search_tool
+    )
 
     if not transport or transport == "stdio":
         mcp.run(transport="stdio")

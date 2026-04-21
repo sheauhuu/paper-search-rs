@@ -66,21 +66,11 @@ class FakeFailingWosSearcher(_RecordingSearcher):
 def _make_config(
     *,
     default_platforms: list[str],
-    enabled_platforms: dict[str, bool],
     debug_enabled: bool = False,
 ) -> Config:
     env = {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": ",".join(default_platforms),
-        "PAPER_SEARCH_PLATFORM_ARXIV_ENABLED": "false",
-        "PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_ENABLED": "false",
-        "PAPER_SEARCH_PLATFORM_SEMANTIC_SCHOLAR_ENABLED": "false",
-        "PAPER_SEARCH_PLATFORM_CROSSREF_ENABLED": str(
-            enabled_platforms.get("crossref", False)
-        ).lower(),
         "PAPER_SEARCH_PLATFORM_CROSSREF_MAX_RESULTS": "10",
-        "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": str(
-            enabled_platforms.get("webofscience", False)
-        ).lower(),
         "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS": "10",
         "WOS_API_KEY": "fake-key",
         "PAPER_SEARCH_JCR_ENABLED": "false",
@@ -140,7 +130,6 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
         config = _make_config(
             default_platforms=["webofscience", "crossref"],
-            enabled_platforms={"webofscience": True, "crossref": True},
         )
         tool = await _get_paper_search_tool()
 
@@ -205,7 +194,6 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
         config = _make_config(
             default_platforms=["webofscience"],
-            enabled_platforms={"webofscience": True, "crossref": False},
         )
         tool = await _get_paper_search_tool()
 
@@ -242,7 +230,6 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_tool_run_rejects_wos_options_when_webofscience_not_targeted(self) -> None:
         config = _make_config(
             default_platforms=["crossref"],
-            enabled_platforms={"webofscience": False, "crossref": True},
         )
         tool = await _get_paper_search_tool()
 
@@ -259,7 +246,6 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_tool_run_surfaces_wos_auth_failures(self) -> None:
         config = _make_config(
             default_platforms=["webofscience"],
-            enabled_platforms={"webofscience": True},
         )
         tool = await _get_paper_search_tool()
 
@@ -291,7 +277,6 @@ class PaperSearchIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_tool_run_appends_debug_section_when_enabled(self) -> None:
         config = _make_config(
             default_platforms=["webofscience"],
-            enabled_platforms={"webofscience": True},
             debug_enabled=True,
         )
         tool = await _get_paper_search_tool()

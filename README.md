@@ -1,32 +1,51 @@
 # paper-search-mcp
 
-A lightweight Python MCP (Model Context Protocol) server focused on academic paper search. Search-only — no PDF download or reading (those are handled by Zotero / zotero-mcp).
+A lightweight Python MCP (Model Context Protocol) server for academic paper search.
+It focuses on metadata retrieval and filtering across multiple sources. PDF download and
+full-text reading are intentionally out of scope.
+
+## Documentation
+
+- English docs index: `docs/README.md`
+- Chinese guide: `docs/README.zh-CN.md`
 
 ## Features
 
-- **Multi-platform search** — arXiv, Semantic Scholar, Google Scholar, CrossRef, PubMed, Scopus, bioRxiv, medRxiv, Web of Science
-- **Concurrent async** — `asyncio.gather` with configurable concurrency limit
-- **Env-driven** — platforms, rate limits, proxy, retry all via environment variables
-- **Reliability** — per-platform token-bucket rate limiting, exponential-backoff retry with full jitter, LRU request cache
-- **Proxy support** — HTTP/HTTPS/SOCKS5, configurable per platform (e.g. Google Scholar in China)
+- Multi-platform search: arXiv, Semantic Scholar, Google Scholar, CrossRef, PubMed, Scopus, bioRxiv, medRxiv, Web of Science
+- Concurrent async fan-out with bounded concurrency
+- Environment-variable configuration only
+- Retry, rate limiting, caching, and optional proxy support
+- JCR-based journal enrichment and filtering
+- Client-visible diagnostics with `PAPER_SEARCH_DEBUG=true`
 
 ## Install
+
+### pip
 
 ```bash
 pip install -e .
 ```
 
-Requires Python >= 3.10.
+### uv
+
+```bash
+uv sync
+uv run paper-search-mcp
+```
+
+Requires Python `>=3.10`.
 
 ## Quick Start
 
-### stdio mode (default, for Claude Desktop / MCP clients)
+### stdio mode
+
+Default mode for MCP clients such as Claude Desktop, Cherry Studio, and other stdio-based integrations.
 
 ```bash
 paper-search-mcp
 ```
 
-### SSE / HTTP mode
+### SSE / streamable HTTP mode
 
 ```bash
 paper-search-mcp -t sse --port 8000
@@ -35,7 +54,7 @@ paper-search-mcp -t streamable-http --port 8000
 
 ## MCP Client Configuration
 
-Add to your MCP client config (e.g. Claude Desktop `claude_desktop_config.json`):
+Minimal example:
 
 ```json
 {
@@ -48,7 +67,7 @@ Add to your MCP client config (e.g. Claude Desktop `claude_desktop_config.json`)
 }
 ```
 
-With explicit environment-based configuration:
+Example with explicit environment variables:
 
 ```json
 {
@@ -57,10 +76,12 @@ With explicit environment-based configuration:
       "command": "paper-search-mcp",
       "args": [],
       "env": {
-        "PAPER_SEARCH_DEFAULT_PLATFORMS": "crossref,arxiv",
+        "PAPER_SEARCH_DEFAULT_PLATFORMS": "crossref,arxiv,webofscience",
         "PAPER_SEARCH_PLATFORM_CROSSREF_ENABLED": "true",
         "PAPER_SEARCH_PLATFORM_ARXIV_ENABLED": "true",
-        "CROSSREF_MAILTO": "you@example.com"
+        "PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_ENABLED": "true",
+        "CROSSREF_MAILTO": "you@example.com",
+        "WOS_API_KEY": "your-wos-key"
       }
     }
   }
@@ -73,60 +94,62 @@ With explicit environment-based configuration:
 
 Search academic papers across multiple platforms.
 
-**Common query parameters**
+#### Common query parameters
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | string | Yes | — | Search keywords (1–500 chars) |
+| `query` | string | Yes | - | Search keywords (1-500 chars) |
 | `platforms` | string[] | No | env default | Platform names to search |
-| `max_results` | int | No | 10 | Max results per platform (1–100) |
-| `year_from` | int | No | — | Filter by start year |
-| `year_to` | int | No | — | Filter by end year |
-| `sort_by` | string | No | `relevance` | Sort: `relevance`, `date`, `citations` |
+| `max_results` | int | No | `10` | Max results per platform (1-100) |
+| `year_from` | int | No | - | Filter by start year |
+| `year_to` | int | No | - | Filter by end year |
+| `sort_by` | string | No | `relevance` | `relevance`, `date`, or `citations` |
 
-**Normalized post-search filters**
+#### Normalized post-search filters
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `author` | string | No | — | Filter by author name |
-| `min_citations` | int | No | — | Minimum citation count filter |
-| `journal` | string | No | — | Journal name keyword filter (case-insensitive) |
-| `min_if` | float | No | — | Minimum JCR Impact Factor |
-| `jcr_quartile` | string | No | — | JCR quartile filter, e.g. `Q1,Q2` |
-| `cas_quartile` | string | No | — | CAS quartile filter, e.g. `1,2` |
-| `ccf_rank` | string | No | — | CCF rank filter, e.g. `A,B` |
+| `author` | string | No | - | Filter by author name |
+| `min_citations` | int | No | - | Minimum citation count filter |
+| `journal` | string | No | - | Case-insensitive journal keyword filter |
+| `min_if` | float | No | - | Minimum JCR Impact Factor |
+| `jcr_quartile` | string | No | - | JCR quartile, for example `Q1,Q2` |
+| `cas_quartile` | string | No | - | CAS quartile, for example `1,2` |
+| `ccf_rank` | string | No | - | CCF rank, for example `A,B` |
 | `exclude_warning` | bool | No | `false` | Exclude journals on the warning list |
 
-**Platform-specific advanced options**
+#### Platform-specific advanced options
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `wos_options` | object | No | — | Web of Science-only options: `doi`, `issn`, `document_type`, `page` |
+| `wos_options` | object | No | - | Web of Science-only options: `doi`, `issn`, `document_type`, `page` |
 
-**Platforms:** `arxiv`, `semantic_scholar`, `google_scholar`, `crossref`, `pubmed`, `scopus`, `biorxiv`, `medrxiv`, `webofscience`
+Supported platforms:
 
-**Citation count support:**
+- `arxiv`
+- `semantic_scholar`
+- `google_scholar`
+- `crossref`
+- `pubmed`
+- `scopus`
+- `biorxiv`
+- `medrxiv`
+- `webofscience`
 
-| Platform | Citations | Journal |
-|----------|-----------|---------|
-| Semantic Scholar | citationCount | — |
-| CrossRef | is-referenced-by-count | container-title |
-| Scopus | citedby-count | prism:publicationName |
-| arXiv | — | — |
-| Google Scholar | — | — |
-| PubMed | — | — |
-| bioRxiv / medRxiv | — | category |
+#### Example request
 
-**Behavior:**
-1. Resolve target platforms (argument > env default)
-2. Create concurrent search tasks (limited by `max_concurrent_searches`)
-3. Validate platform-specific options, for example `wos_options` requires `webofscience`
-4. Merge results, deduplicate by DOI or title similarity (merge citations — take max)
-5. Sort by requested order
-6. Apply normalized post-search filters: author, min_citations, journal, JCR filters
-7. Return formatted paper list
+```json
+{
+  "query": "construction safety",
+  "platforms": ["webofscience"],
+  "year_from": 2021,
+  "year_to": 2025,
+  "max_results": 10,
+  "sort_by": "relevance"
+}
+```
 
-**Web of Science advanced options**
+#### Example WoS request with native options
 
 ```json
 {
@@ -140,105 +163,106 @@ Search academic papers across multiple platforms.
 }
 ```
 
-**Example output:**
-
-```
-Source: arxiv
-Paper ID: 1706.03762
-Title: Attention Is All You Need
-Authors: Ashish Vaswani; Noam Shazeer; Niki Parmar; ...
-Abstract: The dominant sequence transduction models are based on complex recurrent...
-Published: 2017-06-12
-Year: 2017
-URL: http://arxiv.org/abs/1706.03762v5
-PDF: https://arxiv.org/pdf/1706.03762v5
-Categories: cs.CL; cs.LG
-```
-
 ## Configuration
 
-The server now reads configuration from environment variables only. The `--config/-c`
-CLI option is no longer supported, and startup fails fast if a legacy `config.yaml`
-is supplied or detected.
+The server reads configuration from environment variables only.
 
-### Environment variables
+`--config/-c` is no longer supported. Startup fails fast if:
 
-Core search settings:
+- `-c /path/to/config.yaml` is supplied, or
+- a legacy `config.yaml` is detected in an old auto-load location.
+
+### Core search settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PAPER_SEARCH_DEFAULT_PLATFORMS` | `arxiv,semantic_scholar,google_scholar,crossref` | Comma-separated default platform list |
 | `PAPER_SEARCH_MAX_RESULTS_PER_PLATFORM` | `10` | Per-platform result cap |
 | `PAPER_SEARCH_MAX_CONCURRENT_SEARCHES` | `5` | Fan-out concurrency limit |
-| `PAPER_SEARCH_TIMEOUT_SECONDS` | `30` | HTTP timeout for source requests |
+| `PAPER_SEARCH_TIMEOUT_SECONDS` | `30` | HTTP timeout |
 | `PAPER_SEARCH_CACHE_MAX_SIZE` | `100` | LRU cache size |
 | `PAPER_SEARCH_CACHE_TTL_SECONDS` | `3600` | Cache TTL in seconds |
-| `PAPER_SEARCH_RETRY_MAX_RETRIES` | `3` | Retry count for retryable failures |
+| `PAPER_SEARCH_RETRY_MAX_RETRIES` | `3` | Retry count |
 | `PAPER_SEARCH_RETRY_INITIAL_DELAY_SECONDS` | `1.0` | Initial retry delay |
 | `PAPER_SEARCH_RETRY_MAX_DELAY_SECONDS` | `30.0` | Max retry delay |
 | `PAPER_SEARCH_DEBUG` | `false` | Append per-platform diagnostics to tool output |
 
-Per-platform overrides use the pattern `PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`:
+### Per-platform overrides
 
-| Variable pattern | Example |
-|------------------|---------|
+Pattern: `PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`
+
+| Pattern | Example |
+|---------|---------|
 | `..._ENABLED` | `PAPER_SEARCH_PLATFORM_CROSSREF_ENABLED=true` |
 | `..._MAX_RESULTS` | `PAPER_SEARCH_PLATFORM_WEBOFSCIENCE_MAX_RESULTS=25` |
 | `..._RATE_LIMIT_RPS` | `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5` |
 | `..._PROXY` | `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true` |
 
-Supported `<PLATFORM>` names: `ARXIV`, `SEMANTIC_SCHOLAR`, `GOOGLE_SCHOLAR`, `CROSSREF`,
-`PUBMED`, `SCOPUS`, `BIORXIV`, `MEDRXIV`, `WEBOFSCIENCE`.
+Supported `<PLATFORM>` names:
 
-Credentials, mailto, proxy, and JCR settings:
+- `ARXIV`
+- `SEMANTIC_SCHOLAR`
+- `GOOGLE_SCHOLAR`
+- `CROSSREF`
+- `PUBMED`
+- `SCOPUS`
+- `BIORXIV`
+- `MEDRXIV`
+- `WEBOFSCIENCE`
+
+### Credentials, proxy, and JCR settings
 
 | Variable | Used by |
 |----------|---------|
-| `SEMANTIC_SCHOLAR_API_KEY` | Semantic Scholar (optional, higher rate limit) |
-| `CROSSREF_MAILTO` | CrossRef polite pool (optional, faster) |
-| `PUBMED_API_KEY` | PubMed (required if enabled) |
-| `SCOPUS_API_KEY` | Scopus (required if enabled) |
-| `WOS_API_KEY` | Web of Science Starter (required if enabled) |
+| `SEMANTIC_SCHOLAR_API_KEY` | Semantic Scholar |
+| `CROSSREF_MAILTO` | CrossRef polite pool |
+| `PUBMED_API_KEY` | PubMed |
+| `SCOPUS_API_KEY` | Scopus |
+| `WOS_API_KEY` | Web of Science Starter |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `SOCKS_PROXY` | Proxy settings |
-| `PAPER_SEARCH_JCR_ENABLED` | Enable JCR settings block |
+| `PAPER_SEARCH_JCR_ENABLED` | Enable JCR enrichment |
 | `PAPER_SEARCH_JCR_DATA_DIR` | Custom JCR data directory |
 | `PAPER_SEARCH_JCR_AUTO_UPDATE` | Auto-update stale JCR data |
-| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | Staleness threshold for JCR data |
+| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | JCR staleness threshold |
 
-### Debugging
+## Debugging
 
 Set `PAPER_SEARCH_DEBUG=true` to append a compact diagnostics section to the tool output.
-This is especially useful for distinguishing `No papers found.` from Web of Science
-configuration, authentication, entitlement, or network failures.
+This is useful when you need to distinguish:
+
+- genuine `No papers found.` results
+- missing credentials
+- WoS entitlement/authentication failures
+- network or endpoint fallback issues
 
 ## Project Structure
 
-```
+```text
 src/paper_search_mcp/
-├── __init__.py
-├── __main__.py           # FastMCP entry + CLI (typer)
-├── config.py             # Config loader (environment variables + defaults)
-├── models.py             # Paper model + tool option models
-├── search/
-│   ├── __init__.py       # Searcher registry
-│   ├── base.py           # BaseSearcher (retry/rate-limit/cache/proxy)
-│   ├── arxiv.py
-│   ├── google_scholar.py
-│   ├── semantic_scholar.py
-│   ├── crossref.py
-│   ├── pubmed.py
-│   ├── scopus.py
-│   ├── biorxiv.py        # includes MedRxivSearcher
-│   └── webofscience.py
-├── tools/
-│   ├── __init__.py
-│   └── paper_search.py   # Concurrent search + dedup + sort
-└── utils/
-    ├── __init__.py
-    ├── retry.py           # Exponential backoff + full jitter
-    ├── rate_limiter.py    # Token bucket
-    ├── cache.py           # LRU + SHA-256 key
-    └── proxy.py           # Proxy config parser
+|-- __init__.py
+|-- __main__.py           # FastMCP entry + CLI (typer)
+|-- config.py             # Environment-based config loader
+|-- models.py             # Paper model + tool option models
+|-- search/
+|   |-- __init__.py       # Searcher registry
+|   |-- base.py           # BaseSearcher (retry/rate-limit/cache/proxy)
+|   |-- arxiv.py
+|   |-- google_scholar.py
+|   |-- semantic_scholar.py
+|   |-- crossref.py
+|   |-- pubmed.py
+|   |-- scopus.py
+|   |-- biorxiv.py        # includes MedRxivSearcher
+|   `-- webofscience.py
+|-- tools/
+|   |-- __init__.py
+|   `-- paper_search.py   # Concurrent search + dedup + sort
+`-- utils/
+    |-- __init__.py
+    |-- retry.py
+    |-- rate_limiter.py
+    |-- cache.py
+    `-- proxy.py
 ```
 
 ## License

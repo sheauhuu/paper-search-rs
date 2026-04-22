@@ -277,7 +277,14 @@ async def jcr_lookup_tool(
     return _format_jcr_entry(entry)
 
 
-mcp.tool(name="jcr_lookup", description=_JCR_LOOKUP_DESC)(jcr_lookup_tool)
+def _register_jcr_lookup(config: Config) -> None:
+    """Register jcr_lookup tool only when JCR is enabled."""
+    if config.jcr.get("enabled"):
+        mcp.tool(name="jcr_lookup", description=_JCR_LOOKUP_DESC)(jcr_lookup_tool)
+
+
+# Register with default config at import time (for tests).
+_register_jcr_lookup(_get_config())
 
 # ── CLI ───────────────────────────────────────────────────────────────────
 app = typer.Typer(add_completion=False, help="paper-search-mcp — Academic paper search MCP server")
@@ -316,6 +323,9 @@ def run(
     mcp.tool(name="paper_search", description=_build_tool_description(_config))(
         paper_search_tool
     )
+
+    # Conditionally register jcr_lookup (only when JCR is enabled)
+    _register_jcr_lookup(_config)
 
     if not transport or transport == "stdio":
         mcp.run(transport="stdio")

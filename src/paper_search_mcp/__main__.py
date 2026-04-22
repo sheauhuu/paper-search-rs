@@ -15,6 +15,7 @@ from .models import SortBy, WosSearchOptions
 from .jcr.updater import get_data_dir, needs_update, save_version, update_jcr_data
 from .tools.paper_search import (
     PlatformDiagnostics,
+    _get_jcr_index,
     paper_search_with_diagnostics as _paper_search_with_diagnostics,
 )
 
@@ -203,6 +204,80 @@ async def paper_search_tool(
 mcp.tool(name="paper_search", description=_build_tool_description(_get_config()))(
     paper_search_tool
 )
+
+
+# ── JCR lookup tool ───────────────────────────────────────────────────────
+
+_JCR_LOOKUP_DESC = """Look up JCR journal metrics by journal name or ISSN.
+
+Requires JCR data loaded (run `paper-search-mcp update-jcr` first).
+Returns Impact Factor, JCR quartile, CAS quartile, CCF rank, and warning list status."""
+
+
+def _format_jcr_entry(entry: object) -> str:
+    """Format a JcrEntry as plain text."""
+    lines = []
+    if getattr(entry, "journal", None):
+        lines.append(f"Journal: {entry.journal}")
+    if getattr(entry, "issn", None):
+        lines.append(f"ISSN: {entry.issn}")
+    if getattr(entry, "impact_factor", None) is not None:
+        lines.append(f"Impact Factor: {entry.impact_factor}")
+    if getattr(entry, "jcr_quartile", None):
+        lines.append(f"JCR Quartile: {entry.jcr_quartile}")
+    if getattr(entry, "jcr_rank", None):
+        lines.append(f"JCR Rank: {entry.jcr_rank}")
+    if getattr(entry, "jcr_category", None):
+        lines.append(f"JCR Category: {entry.jcr_category}")
+    if getattr(entry, "cas_quartile", None):
+        lines.append(f"CAS Quartile: {entry.cas_quartile}")
+    if getattr(entry, "cas_category", None):
+        lines.append(f"CAS Category: {entry.cas_category}")
+    if getattr(entry, "cas_sub_categories", None):
+        lines.append(f"CAS Sub-categories: {'; '.join(entry.cas_sub_categories)}")
+    if getattr(entry, "ccf_rank", None):
+        lines.append(f"CCF Rank: {entry.ccf_rank}")
+    if getattr(entry, "ccf_field", None):
+        lines.append(f"CCF Field: {entry.ccf_field}")
+    if getattr(entry, "is_warning", None):
+        lines.append("Warning: journal on warning list")
+        if getattr(entry, "warning_reason", None):
+            lines.append(f"Warning Reason: {entry.warning_reason}")
+    return "\n".join(lines) if lines else "No JCR data found."
+
+
+async def jcr_lookup_tool(
+    journal: Optional[str] = Field(
+        default=None,
+        description="Journal name (case-insensitive match). e.g. 'Nature', 'Safety Science'",
+    ),
+    issn: Optional[str] = Field(
+        default=None,
+        description="ISSN of the journal. e.g. '0028-0836'",
+    ),
+) -> str:
+    """Look up JCR metrics for a journal."""
+    config = _get_config()
+
+    if not journal and not issn:
+        return "Provide at least one of: journal name or ISSN."
+
+    jcr_index = _get_jcr_index(config)
+    if jcr_index is None:
+        return (
+            "JCR data not available. "
+            "Run `paper-search-mcp update-jcr` to download data first, "
+            "and set PAPER_SEARCH_JCR_ENABLED=true."
+        )
+
+    entry = jcr_index.lookup(issn=issn or "", journal=journal or "")
+    if entry is None:
+        return f"No JCR data found for {'ISSN ' + issn if issn else journal}."
+
+    return _format_jcr_entry(entry)
+
+
+mcp.tool(name="jcr_lookup", description=_JCR_LOOKUP_DESC)(jcr_lookup_tool)
 
 # ── CLI ───────────────────────────────────────────────────────────────────
 app = typer.Typer(add_completion=False, help="paper-search-mcp — Academic paper search MCP server")

@@ -16,6 +16,7 @@ full-text reading are intentionally out of scope.
 - Environment-variable configuration only
 - Retry, rate limiting, caching, and optional proxy support
 - JCR-based journal enrichment and filtering
+- Optional `jcr_lookup` tool for direct journal metric lookup
 - Client-visible diagnostics with `PAPER_SEARCH_DEBUG=true`
 
 ## Install
@@ -85,7 +86,12 @@ Example with explicit environment variables:
 }
 ```
 
-## MCP Tool
+## MCP Tools
+
+The available MCP tool surface is configuration-aware:
+
+- `paper_search` is always registered.
+- `jcr_lookup` is registered only when `PAPER_SEARCH_JCR_ENABLED=true`.
 
 ### `paper_search`
 
@@ -160,9 +166,33 @@ Supported platforms:
 }
 ```
 
+### `jcr_lookup`
+
+Look up local JCR journal metrics directly by journal name or ISSN.
+
+This tool is only exposed when `PAPER_SEARCH_JCR_ENABLED=true`. If JCR is enabled and no local data exists, runtime auto-update downloads ShowJCR data on first use unless `PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS=0`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `journal` | string | No | - | Journal name keyword, case-insensitive |
+| `issn` | string | No | - | Journal ISSN |
+
+At least one of `journal` or `issn` must be provided.
+
+#### Example JCR lookup
+
+```json
+{
+  "journal": "Nature"
+}
+```
+
+Typical output includes Impact Factor, JCR quartile, JCR rank/category, CAS quartile/category, CCF rank/field, and warning-list status when available.
+
 ## Configuration
 
 The server reads configuration from environment variables only.
+It does not write or persist application configuration files. Put runtime settings in your MCP client's `env` block, shell environment, container environment, or process manager.
 
 `--config/-c` is no longer supported. Startup fails fast if:
 
@@ -245,6 +275,12 @@ paper-search-mcp update-jcr
 
 Runtime auto-update compares the local ShowJCR revision recorded in `version.json` with the upstream repository before updating. It does not add an MCP management tool; AI clients trigger it naturally by using JCR-backed lookup or filters when JCR is enabled.
 
+To force a manual refresh:
+
+```bash
+paper-search-mcp update-jcr --force
+```
+
 ## Debugging
 
 Set `PAPER_SEARCH_DEBUG=true` to append a compact diagnostics section to the tool output.
@@ -262,6 +298,7 @@ src/paper_search_mcp/
 |-- __init__.py
 |-- __main__.py           # FastMCP entry + CLI (typer)
 |-- config.py             # Environment-based config loader
+|-- jcr/                  # Local ShowJCR update/load logic
 |-- models.py             # Paper model + tool option models
 |-- search/
 |   |-- __init__.py       # Searcher registry

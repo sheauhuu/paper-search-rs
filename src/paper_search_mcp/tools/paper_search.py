@@ -13,7 +13,12 @@ from loguru import logger
 from ..config import Config
 from ..jcr.loader import load_jcr_index
 from ..jcr.models import JcrIndex
-from ..jcr.updater import get_data_dir
+from ..jcr.updater import (
+    ensure_jcr_data_current,
+    get_data_dir,
+    get_jcr_data_source_dir,
+    try_save_index_size,
+)
 from ..models import Paper, WosSearchOptions
 from ..search import SEARCHER_REGISTRY
 
@@ -44,24 +49,31 @@ class PaperSearchRunResult:
 def _get_jcr_index(config: Optional[Config] = None) -> Optional[JcrIndex]:
     """Get or lazily load JCR index. Returns None if no data available."""
     global _jcr_index
-    if _jcr_index is not None and _jcr_index.size > 0:
-        return _jcr_index
 
-    config_dir = ""
-    if config:
-        config_dir = config.jcr.get("data_dir", "")
+    if config is None:
+        config = Config()
+    if not config.jcr.get("enabled"):
+        return None
+
+    config_dir = config.jcr.get("data_dir", "")
+    auto_update_days = int(config.jcr.get("auto_update_days", 7))
 
     data_dir = get_data_dir(config_dir)
-    csv_dir = data_dir / "repo" / "中科院分区表及JCR原始数据文件"
-    if csv_dir.is_dir():
-        _jcr_index = load_jcr_index(str(csv_dir))
-        return _jcr_index if _jcr_index.size > 0 else None
+    data_changed = ensure_jcr_data_current(
+        config_dir=config_dir,
+        auto_update_days=auto_update_days,
+    )
+    if _jcr_index is not None and _jcr_index.size > 0 and not data_changed:
+        return _jcr_index
 
-    # Try data_dir itself (may have jcr.db or CSVs directly)
-    if data_dir.is_dir() and any(data_dir.iterdir()):
-        _jcr_index = load_jcr_index(str(data_dir))
-        return _jcr_index if _jcr_index.size > 0 else None
+    source_dir = get_jcr_data_source_dir(data_dir)
+    if source_dir is None:
+        return None
 
+    _jcr_index = load_jcr_index(str(source_dir))
+    if _jcr_index.size > 0:
+        try_save_index_size(data_dir, _jcr_index.size)
+        return _jcr_index
     return None
 
 

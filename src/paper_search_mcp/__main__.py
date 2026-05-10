@@ -105,7 +105,7 @@ def _build_tool_description(config: Config) -> str:
     if config.jcr.get("enabled"):
         parts.extend([
             "",
-            "JCR / journal metrics (requires local JCR data):",
+            "JCR / journal metrics (uses local JCR data; can auto-initialize when enabled):",
             "- Impact Factor, JCR quartile, CAS quartile, CCF rank, warning list",
             "- Filters: min_if, jcr_quartile, cas_quartile, ccf_rank, exclude_warning",
         ])
@@ -210,7 +210,7 @@ mcp.tool(name="paper_search", description=_build_tool_description(_get_config())
 
 _JCR_LOOKUP_DESC = """Look up JCR journal metrics by journal name or ISSN.
 
-Requires JCR data loaded (run `paper-search-mcp update-jcr` first).
+Requires JCR to be enabled. Runtime can auto-initialize data unless disabled with PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS=0.
 Returns Impact Factor, JCR quartile, CAS quartile, CCF rank, and warning list status."""
 
 
@@ -266,8 +266,8 @@ async def jcr_lookup_tool(
     if jcr_index is None:
         return (
             "JCR data not available. "
-            "Run `paper-search-mcp update-jcr` to download data first, "
-            "and set PAPER_SEARCH_JCR_ENABLED=true."
+            "Set PAPER_SEARCH_JCR_ENABLED=true and allow runtime auto-update, "
+            "or run `paper-search-mcp update-jcr` to download data manually."
         )
 
     entry = jcr_index.lookup(issn=issn or "", journal=journal or "")
@@ -362,9 +362,9 @@ def update_jcr(
     typer.echo("Downloading/updating JCR data from ShowJCR repo...")
     try:
         csv_dir = update_jcr_data(config_dir)
-        save_version(data_dir)
         # Verify by loading
         index = load_jcr_index(str(csv_dir))
+        save_version(data_dir, index_size=index.size)
         msg = f"JCR data updated successfully: {index.size} journals indexed"
         logger.info(msg)
         typer.echo(msg)

@@ -228,20 +228,22 @@ All optional. Applied globally or per-platform via `..._PROXY=true`.
 
 ### JCR / journal metrics
 
-JCR enrichment is a standalone feature, independent of platform selection. When enabled and local JCR data is available, search results are enriched with Impact Factor, JCR quartile, CAS quartile, CCF rank, and warning list status.
+JCR enrichment is a standalone feature, independent of platform selection. When enabled, search results are enriched with Impact Factor, JCR quartile, CAS quartile, CCF rank, and warning list status. Runtime auto-update is enabled by default: if local data is missing, the first JCR use downloads ShowJCR data; after that, the server checks the upstream repository at most once per configured interval.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `PAPER_SEARCH_JCR_ENABLED` | No | `false` | Enable JCR enrichment and filters |
-| `PAPER_SEARCH_JCR_DATA_DIR` | No | `~/.paper-search-mcp/jcr` | JCR data directory. Defaults to `~/.paper-search-mcp/jcr` if not set. Data is downloaded via `paper-search-mcp update-jcr` |
-| `PAPER_SEARCH_JCR_AUTO_UPDATE` | No | `false` | Auto-update stale JCR data on search |
-| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | No | `30` | Staleness threshold (days) before update is needed |
+| `PAPER_SEARCH_JCR_DATA_DIR` | No | `~/.paper-search-mcp/jcr` | JCR data directory. Defaults to `~/.paper-search-mcp/jcr` if not set. Use a writable persistent directory in containers |
+| `PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS` | No | `7` | Runtime upstream-check interval in days. `0` disables runtime auto-update and first-use download |
+| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | No | `30` | Manual `update-jcr` CLI staleness threshold |
 
-To set up JCR data for the first time:
+To set up or refresh JCR data manually:
 
 ```bash
 paper-search-mcp update-jcr
 ```
+
+Runtime auto-update compares the local ShowJCR revision recorded in `version.json` with the upstream repository before updating. It does not add an MCP management tool; AI clients trigger it naturally by using JCR-backed lookup or filters when JCR is enabled.
 
 ## Debugging
 

@@ -106,7 +106,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "jcr": {
         "enabled": False,
         "data_dir": "",
-        "auto_update": False,
+        "auto_update_days": 7,
         "max_age_days": 30,
     },
     "debug": {
@@ -180,7 +180,31 @@ def _apply_env_overrides(config: dict[str, Any]) -> None:
     jcr = config["jcr"]
     jcr["enabled"] = _parse_bool("PAPER_SEARCH_JCR_ENABLED", jcr["enabled"])
     jcr["data_dir"] = _parse_text("PAPER_SEARCH_JCR_DATA_DIR", jcr["data_dir"])
-    jcr["auto_update"] = _parse_bool("PAPER_SEARCH_JCR_AUTO_UPDATE", jcr["auto_update"])
+    jcr["auto_update_days"] = _parse_int(
+        "PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS",
+        jcr["auto_update_days"],
+    )
+    if _read_env("PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS") is None:
+        legacy_auto_update = _read_env("PAPER_SEARCH_JCR_AUTO_UPDATE")
+        legacy_max_age_days = _read_env("PAPER_SEARCH_JCR_MAX_AGE_DAYS")
+        if legacy_auto_update is not None:
+            logger.warning(
+                "[config] PAPER_SEARCH_JCR_AUTO_UPDATE is deprecated; "
+                "use PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS instead"
+            )
+            if _parse_bool("PAPER_SEARCH_JCR_AUTO_UPDATE", False):
+                jcr["auto_update_days"] = _parse_int(
+                    "PAPER_SEARCH_JCR_MAX_AGE_DAYS",
+                    jcr["auto_update_days"],
+                )
+            else:
+                jcr["auto_update_days"] = 0
+        elif legacy_max_age_days is not None:
+            logger.warning(
+                "[config] PAPER_SEARCH_JCR_MAX_AGE_DAYS only controls the "
+                "manual update-jcr CLI; use PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS "
+                "for runtime auto-update"
+            )
     jcr["max_age_days"] = _parse_int("PAPER_SEARCH_JCR_MAX_AGE_DAYS", jcr["max_age_days"])
 
     debug = config["debug"]

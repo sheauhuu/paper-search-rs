@@ -167,20 +167,22 @@ PAPER_SEARCH_DEFAULT_PLATFORMS=arxiv,crossref,webofscience
 
 ### JCR / 期刊指标
 
-JCR 是独立于平台的功能模块。启用后（且本地有 JCR 数据），搜索结果会自动补充影响因子、JCR 分区、中科院分区、CCF 等级和预警名单。
+JCR 是独立于平台的功能模块。启用后，搜索结果会自动补充影响因子、JCR 分区、中科院分区、CCF 等级和预警名单。运行时自动更新默认开启：如果本地没有数据，第一次使用 JCR 时会自动下载 ShowJCR 数据；之后最多按配置间隔检查一次上游仓库。
 
 | 变量 | 必选 | 默认值 | 说明 |
 |------|------|--------|------|
 | `PAPER_SEARCH_JCR_ENABLED` | 否 | `false` | 启用 JCR 补充和筛选 |
-| `PAPER_SEARCH_JCR_DATA_DIR` | 否 | `~/.paper-search-mcp/jcr` | JCR 数据目录。不设置时默认使用 `~/.paper-search-mcp/jcr`。数据通过 `paper-search-mcp update-jcr` 下载 |
-| `PAPER_SEARCH_JCR_AUTO_UPDATE` | 否 | `false` | 搜索时自动更新过期数据 |
-| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | 否 | `30` | 数据过期阈值（天） |
+| `PAPER_SEARCH_JCR_DATA_DIR` | 否 | `~/.paper-search-mcp/jcr` | JCR 数据目录。不设置时默认使用 `~/.paper-search-mcp/jcr`。容器部署建议挂载到可写持久目录 |
+| `PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS` | 否 | `7` | 运行时检查上游仓库的间隔（天）。设为 `0` 可禁用运行时自动更新和首次自动下载 |
+| `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | 否 | `30` | 手动 `update-jcr` CLI 的过期阈值（天） |
 
-首次使用 JCR 数据：
+手动初始化或刷新 JCR 数据：
 
 ```bash
 paper-search-mcp update-jcr
 ```
+
+运行时自动更新会先比较 `version.json` 记录的本地 ShowJCR revision 和上游仓库 revision，只有上游变化时才更新。该方案不会新增 MCP 管理工具；AI 客户端在启用 JCR 后正常调用 lookup 或 JCR 过滤即可触发。
 
 ## 8. 常见查询示例
 

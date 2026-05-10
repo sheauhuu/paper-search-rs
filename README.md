@@ -55,14 +55,19 @@ paper-search-mcp -t streamable-http --port 8000
 
 ## MCP Client Configuration
 
-Minimal example:
+Recommended `uvx` example:
 
 ```json
 {
   "mcpServers": {
     "paper-search": {
-      "command": "paper-search-mcp",
-      "args": []
+      "command": "uvx",
+      "args": [
+        "--native-tls",
+        "--from",
+        "git+https://github.com/sheauhuu/paper-search-mcp.git",
+        "paper-search"
+      ]
     }
   }
 }
@@ -74,8 +79,13 @@ Example with explicit environment variables:
 {
   "mcpServers": {
     "paper-search": {
-      "command": "paper-search-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": [
+        "--native-tls",
+        "--from",
+        "git+https://github.com/sheauhuu/paper-search-mcp.git",
+        "paper-search"
+      ],
       "env": {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": "crossref,arxiv,webofscience",
         "CROSSREF_MAILTO": "you@example.com",
@@ -85,6 +95,8 @@ Example with explicit environment variables:
   }
 }
 ```
+
+The package also installs `paper-search-mcp` as a command alias. In stdio mode, `--transport stdio` is optional because stdio is the default.
 
 ## MCP Tools
 

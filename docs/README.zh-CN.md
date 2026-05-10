@@ -64,12 +64,19 @@ paper-search-mcp -t streamable-http --port 8000
 
 ### 最小配置
 
+推荐直接用 `uvx` 从 GitHub 安装并启动：
+
 ```json
 {
   "mcpServers": {
     "paper-search": {
-      "command": "paper-search-mcp",
-      "args": []
+      "command": "uvx",
+      "args": [
+        "--native-tls",
+        "--from",
+        "git+https://github.com/sheauhuu/paper-search-mcp.git",
+        "paper-search"
+      ]
     }
   }
 }
@@ -81,8 +88,13 @@ paper-search-mcp -t streamable-http --port 8000
 {
   "mcpServers": {
     "paper-search": {
-      "command": "paper-search-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": [
+        "--native-tls",
+        "--from",
+        "git+https://github.com/sheauhuu/paper-search-mcp.git",
+        "paper-search"
+      ],
       "env": {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": "crossref,arxiv,webofscience",
         "CROSSREF_MAILTO": "you@example.com",
@@ -92,6 +104,8 @@ paper-search-mcp -t streamable-http --port 8000
   }
 }
 ```
+
+安装后也可以使用 `paper-search-mcp` 这个命令别名。stdio 是默认 transport，因此通常不需要额外写 `--transport stdio`。
 
 ## 6. 重要说明：不再支持 config.yaml
 

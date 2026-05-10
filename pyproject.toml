@@ -26,6 +26,7 @@ dependencies = [
 
 [project.scripts]
 paper-search-mcp = "paper_search_mcp.__main__:main"
+paper-search = "paper_search_mcp.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/paper_search_mcp"]

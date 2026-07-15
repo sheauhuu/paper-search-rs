@@ -1,10 +1,11 @@
 # Documentation
 
-This directory contains supplementary documentation for the native Rust `paper-search-mcp`.
+This directory contains supplementary documentation for the native Rust `paper-search-rs`.
 
 ## Available documents
 
 - `README.zh-CN.md`: Chinese build, MCP configuration, tool contract, and JCR guide
+- `releasing.md`: protected publishing setup, release ordering, and rollback
 
 ## Recommended reading order
 

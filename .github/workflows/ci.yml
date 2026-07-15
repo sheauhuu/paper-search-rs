@@ -17,28 +17,44 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets --all-features --locked -- -D warnings
       - run: cargo test --all-targets --all-features --locked
+      - run: npm --prefix npm test
+      - run: node scripts/check-release-versions.mjs
+      - run: node --test scripts/test-release-validation.mjs
 
-  native-build:
+  package:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: quality
-    name: ${{ matrix.target }}
+    name: package ${{ matrix.target }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: macos-15
             target: aarch64-apple-darwin
+            npm-directory: darwin-arm64
+            manylinux: auto
           - runner: macos-15-intel
             target: x86_64-apple-darwin
+            npm-directory: darwin-x64
+            manylinux: auto
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+            npm-directory: linux-x64
+            manylinux: "2_28"
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            npm-directory: linux-arm64
+            manylinux: "2_28"
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
+            npm-directory: win32-x64
+            manylinux: auto
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -49,4 +65,137 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Validate release metadata
+        shell: bash
+        run: |
+          node scripts/check-release-versions.mjs --tag "$GITHUB_REF_NAME"
+          echo "VERSION=$(node -p "require('./npm/package.json').version")" >> "$GITHUB_ENV"
+      - name: Build binary wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --bindings bin --out dist
+      - name: Assemble Unix target artifacts from wheel binary
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts native
+          wheel=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          member=$(unzip -Z1 "$wheel" | grep -E '\.data/scripts/paper-search-rs$')
+          unzip -p "$wheel" "$member" > native/paper-search-rs
+          chmod 755 native/paper-search-rs
+          cp LICENSE native/LICENSE
+          cp "$wheel" artifacts/
+          node scripts/stage-npm-binary.mjs "${{ matrix.target }}" native/paper-search-rs
+          npm pack "npm/packages/${{ matrix.npm-directory }}" --ignore-scripts --pack-destination artifacts
+          tar -czf "artifacts/paper-search-rs-${VERSION}-${{ matrix.target }}.tar.gz" -C native .
+          node scripts/release-artifacts.mjs artifacts --version "$VERSION" --target "${{ matrix.target }}" --write
+      - name: Assemble Windows target artifacts from wheel binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts, native | Out-Null
+          $wheel = Get-ChildItem dist -Filter *.whl | Select-Object -First 1
+          Copy-Item $wheel.FullName "$env:RUNNER_TEMP\wheel.zip"
+          Expand-Archive "$env:RUNNER_TEMP\wheel.zip" "$env:RUNNER_TEMP\wheel"
+          $binary = Get-ChildItem "$env:RUNNER_TEMP\wheel" -Recurse -Filter paper-search-rs.exe | Select-Object -First 1
+          Copy-Item $binary.FullName native\paper-search-rs.exe
+          Copy-Item LICENSE native\LICENSE
+          Copy-Item $wheel.FullName artifacts\
+          node scripts/stage-npm-binary.mjs "${{ matrix.target }}" native\paper-search-rs.exe
+          npm pack "npm/packages/${{ matrix.npm-directory }}" --ignore-scripts --pack-destination artifacts
+          Compress-Archive native\* "artifacts\paper-search-rs-$env:VERSION-${{ matrix.target }}.zip"
+          node scripts/release-artifacts.mjs artifacts --version "$env:VERSION" --target "${{ matrix.target }}" --write
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: downloaded
+      - name: Verify target artifacts and assemble release set
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./npm/package.json').version")
+          mkdir -p assembled
+          for directory in downloaded/release-*; do
+            target=${directory#downloaded/release-}
+            node scripts/release-artifacts.mjs "$directory" --version "$version" --target "$target"
+            find "$directory" -maxdepth 1 -type f ! -name SHA256SUMS -exec cp {} assembled/ \;
+          done
+          npm pack npm --ignore-scripts --pack-destination assembled
+          node scripts/release-artifacts.mjs assembled --version "$version" --write
+      - name: Smoke-test assembled Linux x64 npm packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./npm/package.json').version")
+          mkdir -p target/release
+          tar -xzf "assembled/paper-search-rs-${version}-x86_64-unknown-linux-gnu.tar.gz" -C target/release
+          node scripts/smoke-npm-local.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paper-search-rs-${{ github.ref_name }}
+          path: assembled/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: assemble
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: paper-search-rs-${{ github.ref_name }}
+          path: release
+      - name: Revalidate approved release set
+        run: |
+          version=$(node -p "require('./npm/package.json').version")
+          node scripts/check-release-versions.mjs --tag "$GITHUB_REF_NAME"
+          node scripts/release-artifacts.mjs release --version "$version"
+      - name: Publish platform npm packages
+        run: |
+          for package in release/paper-search-rs-{darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-x64}-*.tgz; do
+            npm publish "$package" --access public --provenance
+          done
+      - name: Publish PyPI wheels
+        run: uv publish --trusted-publishing always release/*.whl
+      - name: Publish main npm package last
+        run: |
+          version=$(node -p "require('./npm/package.json').version")
+          npm publish "release/paper-search-rs-${version}.tgz" --access public --provenance
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME"

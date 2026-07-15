@@ -123,7 +123,7 @@ async fn update_from_remote(config: &Config) -> AppResult<UpdateOutcome> {
 fn github_client(config: &Config) -> AppResult<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .timeout(config.search.timeout)
-        .user_agent(concat!("paper-search-mcp/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("paper-search-rs/", env!("CARGO_PKG_VERSION")))
         .no_proxy();
     if let Some(proxy_url) = config
         .proxy

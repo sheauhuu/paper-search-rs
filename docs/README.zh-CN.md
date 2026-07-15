@@ -1,6 +1,6 @@
-# paper-search-mcp 中文文档
+# paper-search-rs 中文文档
 
-`paper-search-mcp` 是使用 Rust 完全重写的论文元数据搜索 MCP 服务，面向 MCP
+`paper-search-rs` 是使用 Rust 完全重写的论文元数据搜索 MCP 服务，面向 MCP
 `2025-11-25` 规范，只通过 stdio 运行，并返回由 JSON Schema 定义的结构化结果。
 
 旧 Python 实现保存在 `v0` 分支。当前不负责 PDF 下载、全文阅读、RAG 或文献管理。
@@ -21,7 +21,7 @@
 
 ```bash
 cargo build --release --locked
-./target/release/paper-search-mcp --version
+./target/release/paper-search-rs --version
 ```
 
 也可以把当前 checkout 安装到 Cargo 的 binary 目录：
@@ -30,7 +30,16 @@ cargo build --release --locked
 cargo install --path . --locked
 ```
 
-当前阶段先发布原生二进制。`npx` 和 `uvx` 启动包尚未发布，将在后续复用同一批原生二进制。
+原生二进制也可以通过 npm 和 PyPI 分发，用户无需在本机编译 Rust。
+
+package 发布后，可以用下面任一命令运行同一个原生 stdio 服务：
+
+```bash
+npx --yes paper-search-rs
+uvx paper-search-rs
+```
+
+两种方式都会选择预编译二进制，不下载源码，也不要求用户安装 Rust 工具链。
 
 ## MCP 客户端配置
 
@@ -40,7 +49,39 @@ cargo install --path . --locked
 {
   "mcpServers": {
     "paper-search": {
-      "command": "/absolute/path/to/paper-search-mcp",
+      "command": "/absolute/path/to/paper-search-rs",
+      "env": {
+        "PAPER_SEARCH_DEFAULT_PLATFORMS": "arxiv,semantic_scholar"
+      }
+    }
+  }
+}
+```
+
+通过 npm package 配置：
+
+```json
+{
+  "mcpServers": {
+    "paper-search": {
+      "command": "npx",
+      "args": ["--yes", "paper-search-rs"],
+      "env": {
+        "PAPER_SEARCH_DEFAULT_PLATFORMS": "arxiv,semantic_scholar"
+      }
+    }
+  }
+}
+```
+
+通过 uvx 和 PyPI wheel 配置：
+
+```json
+{
+  "mcpServers": {
+    "paper-search": {
+      "command": "uvx",
+      "args": ["paper-search-rs"],
       "env": {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": "arxiv,semantic_scholar"
       }
@@ -55,7 +96,7 @@ cargo install --path . --locked
 {
   "mcpServers": {
     "paper-search": {
-      "command": "/absolute/path/to/paper-search-mcp",
+      "command": "/absolute/path/to/paper-search-rs",
       "env": {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": "arxiv,semantic_scholar,scopus,webofscience",
         "SCOPUS_API_KEY": "your-scopus-key",
@@ -151,15 +192,15 @@ API key 不会自动启用平台。支持的平台值只有 `arxiv`、`semantic_
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `PAPER_SEARCH_JCR_ENABLED` | `false` | 启用指标补充、筛选和 `jcr_lookup` |
-| `PAPER_SEARCH_JCR_DATA_DIR` | `~/.paper-search-mcp/jcr` | 本地数据目录 |
+| `PAPER_SEARCH_JCR_DATA_DIR` | `~/.paper-search-rs/jcr` | 本地数据目录 |
 | `PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS` | `7` | revision 检查间隔；`0` 禁止自动下载和检查 |
 | `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | `30` | 手动更新的新鲜度阈值 |
 
 手动更新：
 
 ```bash
-paper-search-mcp update-jcr
-paper-search-mcp update-jcr --force
+paper-search-rs update-jcr
+paper-search-rs update-jcr --force
 ```
 
 Rust 版本不调用系统 Git。它通过 HTTPS 下载指定 ShowJCR revision，在 staging 目录解包并验证索引，
@@ -172,6 +213,9 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features
 cargo build --release --locked
+npm --prefix npm test
+node scripts/smoke-npm-local.mjs
+scripts/smoke-uvx-local.sh
 ```
 
 可选公网 smoke：

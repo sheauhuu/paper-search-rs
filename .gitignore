@@ -11,6 +11,12 @@ __pycache__/
 dist/
 build/
 target/
+npm/*.tgz
+npm/packages/*/bin/
+npm/packages/*/LICENSE
+.release-artifacts/
+.uv-cache/
+.npm-cache/
 .env
 config.yaml
 ._*

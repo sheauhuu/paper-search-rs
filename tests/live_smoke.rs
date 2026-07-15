@@ -6,7 +6,7 @@ use tokio::process::Command;
 #[tokio::test]
 #[ignore = "uses live academic APIs"]
 async fn searches_public_providers() {
-    let command = Command::new(env!("CARGO_BIN_EXE_paper-search-mcp")).configure(|command| {
+    let command = Command::new(env!("CARGO_BIN_EXE_paper-search-rs")).configure(|command| {
         command
             .env("PAPER_SEARCH_DEFAULT_PLATFORMS", "arxiv,semantic_scholar")
             .env("PAPER_SEARCH_JCR_ENABLED", "false")

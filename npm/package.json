@@ -1,0 +1,34 @@
+{
+  "name": "paper-search-rs",
+  "version": "0.2.0",
+  "description": "Native stdio MCP server for academic paper search",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sheauhuu/paper-search-rs.git"
+  },
+  "homepage": "https://github.com/sheauhuu/paper-search-rs#readme",
+  "bugs": "https://github.com/sheauhuu/paper-search-rs/issues",
+  "type": "commonjs",
+  "bin": {
+    "paper-search-rs": "bin/paper-search-rs.cjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "paper-search-rs-darwin-arm64": "0.2.0",
+    "paper-search-rs-darwin-x64": "0.2.0",
+    "paper-search-rs-linux-arm64": "0.2.0",
+    "paper-search-rs-linux-x64": "0.2.0",
+    "paper-search-rs-win32-x64": "0.2.0"
+  }
+}

@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
-use paper_search_mcp::config::Config;
+use paper_search_rs::config::Config;
 
 #[derive(Debug, Parser)]
-#[command(name = "paper-search-mcp", version, about)]
+#[command(name = "paper-search-rs", version, about)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -39,7 +39,7 @@ async fn main() {
 
     let result = match cli.command {
         Some(Command::UpdateJcr { force }) => {
-            paper_search_mcp::jcr::updater::update_jcr(&config, force)
+            paper_search_rs::jcr::updater::update_jcr(&config, force)
                 .await
                 .map(|outcome| {
                     println!(
@@ -54,7 +54,7 @@ async fn main() {
                     );
                 })
         }
-        None => paper_search_mcp::mcp::server::run(config).await,
+        None => paper_search_rs::mcp::server::run(config).await,
     };
 
     if let Err(error) = result {

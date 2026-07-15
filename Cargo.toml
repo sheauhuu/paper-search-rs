@@ -1,18 +1,18 @@
 [package]
-name = "paper-search-mcp"
+name = "paper-search-rs"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A native MCP server for academic paper search"
-license = "MIT"
-repository = "https://github.com/sheauhuu/paper-search-mcp"
+license = "Apache-2.0"
+repository = "https://github.com/sheauhuu/paper-search-rs"
 
 [lib]
-name = "paper_search_mcp"
+name = "paper_search_rs"
 path = "src/lib.rs"
 
 [[bin]]
-name = "paper-search-mcp"
+name = "paper-search-rs"
 path = "src/main.rs"
 
 [dependencies]

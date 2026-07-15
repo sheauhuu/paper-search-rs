@@ -1,0 +1,11 @@
+{
+  "name": "paper-search-rs-linux-x64",
+  "version": "0.2.0",
+  "description": "paper-search-rs native binary for Linux x64",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "git+https://github.com/sheauhuu/paper-search-rs.git" },
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": ["bin", "LICENSE"],
+  "engines": { "node": ">=18" }
+}

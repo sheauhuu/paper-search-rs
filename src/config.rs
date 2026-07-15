@@ -230,7 +230,7 @@ fn validate_proxy(proxy: &ProxyConfig) -> AppResult<()> {
 fn default_jcr_data_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".paper-search-mcp")
+        .join(".paper-search-rs")
         .join("jcr")
 }
 

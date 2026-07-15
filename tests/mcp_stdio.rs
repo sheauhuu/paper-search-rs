@@ -10,7 +10,7 @@ fn server_command(jcr_enabled: bool) -> TokioChildProcess {
 }
 
 fn server_command_with_platforms(jcr_enabled: bool, platforms: &str) -> TokioChildProcess {
-    let command = Command::new(env!("CARGO_BIN_EXE_paper-search-mcp")).configure(|command| {
+    let command = Command::new(env!("CARGO_BIN_EXE_paper-search-rs")).configure(|command| {
         command
             .env("PAPER_SEARCH_DEFAULT_PLATFORMS", platforms)
             .env(
@@ -26,7 +26,7 @@ fn server_command_with_platforms(jcr_enabled: bool, platforms: &str) -> TokioChi
 
 #[tokio::test]
 async fn exits_cleanly_when_stdio_closes_before_initialize() {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_paper-search-mcp"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_paper-search-rs"));
     command
         .env("PAPER_SEARCH_JCR_ENABLED", "false")
         .env("RUST_LOG", "error")

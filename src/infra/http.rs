@@ -49,7 +49,7 @@ impl HttpClient {
         let mut builder = reqwest::Client::builder()
             .timeout(config.search.timeout)
             .redirect(reqwest::redirect::Policy::limited(5))
-            .user_agent(concat!("paper-search-mcp/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("paper-search-rs/", env!("CARGO_PKG_VERSION")))
             .no_proxy();
 
         if provider_config.proxy_enabled {

@@ -1,0 +1,11 @@
+{
+  "name": "paper-search-rs-darwin-arm64",
+  "version": "0.2.0",
+  "description": "paper-search-rs native binary for macOS arm64",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "git+https://github.com/sheauhuu/paper-search-rs.git" },
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["bin", "LICENSE"],
+  "engines": { "node": ">=18" }
+}

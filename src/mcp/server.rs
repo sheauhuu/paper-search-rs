@@ -76,7 +76,7 @@ impl PaperSearchServer {
 
 #[tool_handler(
     router = self.tool_router,
-    name = "paper-search-mcp",
+    name = "paper-search-rs",
     version = "0.2.0",
     instructions = "Use paper_search for academic metadata search. Results are structured JSON and individual provider failures do not discard successful provider results."
 )]

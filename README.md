@@ -1,4 +1,4 @@
-# paper-search-mcp
+# paper-search-rs
 
 A native Rust MCP server for academic paper metadata search. It targets MCP `2025-11-25`, runs over
 stdio, and returns schema-defined structured results.
@@ -23,7 +23,7 @@ Requires Rust `1.95.0` (pinned in `rust-toolchain.toml`).
 
 ```bash
 cargo build --release --locked
-./target/release/paper-search-mcp --version
+./target/release/paper-search-rs --version
 ```
 
 To install the current checkout into Cargo's binary directory:
@@ -32,8 +32,17 @@ To install the current checkout into Cargo's binary directory:
 cargo install --path . --locked
 ```
 
-The first milestone distributes the native binary directly. `npx` and `uvx` launchers are planned
-follow-up packages and are not available yet.
+The native binary can also be distributed through npm and PyPI without compiling Rust locally.
+
+After the packages are published, run the same native stdio server through either package manager:
+
+```bash
+npx --yes paper-search-rs
+uvx paper-search-rs
+```
+
+Both commands select a prebuilt binary. They do not download source code or require a Rust
+toolchain on the user's machine.
 
 ## MCP Client Configuration
 
@@ -43,7 +52,39 @@ The server supports stdio only. Use an absolute binary path:
 {
   "mcpServers": {
     "paper-search": {
-      "command": "/absolute/path/to/paper-search-mcp",
+      "command": "/absolute/path/to/paper-search-rs",
+      "env": {
+        "PAPER_SEARCH_DEFAULT_PLATFORMS": "arxiv,semantic_scholar"
+      }
+    }
+  }
+}
+```
+
+Using the npm package:
+
+```json
+{
+  "mcpServers": {
+    "paper-search": {
+      "command": "npx",
+      "args": ["--yes", "paper-search-rs"],
+      "env": {
+        "PAPER_SEARCH_DEFAULT_PLATFORMS": "arxiv,semantic_scholar"
+      }
+    }
+  }
+}
+```
+
+Using the PyPI wheel through uvx:
+
+```json
+{
+  "mcpServers": {
+    "paper-search": {
+      "command": "uvx",
+      "args": ["paper-search-rs"],
       "env": {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": "arxiv,semantic_scholar"
       }
@@ -58,7 +99,7 @@ Example with credentialed providers and JCR:
 {
   "mcpServers": {
     "paper-search": {
-      "command": "/absolute/path/to/paper-search-mcp",
+      "command": "/absolute/path/to/paper-search-rs",
       "env": {
         "PAPER_SEARCH_DEFAULT_PLATFORMS": "arxiv,semantic_scholar,scopus,webofscience",
         "SCOPUS_API_KEY": "your-scopus-key",
@@ -170,15 +211,15 @@ configured proxy only when its `..._PROXY=true`; native JCR updates use the glob
 | Variable | Default | Description |
 |---|---|---|
 | `PAPER_SEARCH_JCR_ENABLED` | `false` | Enable enrichment, filters, and `jcr_lookup` |
-| `PAPER_SEARCH_JCR_DATA_DIR` | `~/.paper-search-mcp/jcr` | Local data root |
+| `PAPER_SEARCH_JCR_DATA_DIR` | `~/.paper-search-rs/jcr` | Local data root |
 | `PAPER_SEARCH_JCR_AUTO_UPDATE_DAYS` | `7` | Runtime revision-check interval; `0` disables auto download/check |
 | `PAPER_SEARCH_JCR_MAX_AGE_DAYS` | `30` | Manual update freshness interval |
 
 Manual update:
 
 ```bash
-paper-search-mcp update-jcr
-paper-search-mcp update-jcr --force
+paper-search-rs update-jcr
+paper-search-rs update-jcr --force
 ```
 
 Updates fetch an exact ShowJCR revision over HTTPS, extract to a staging directory, validate the
@@ -191,6 +232,9 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features
 cargo build --release --locked
+npm --prefix npm test
+node scripts/smoke-npm-local.mjs
+scripts/smoke-uvx-local.sh
 ```
 
 The public-provider live smoke test is opt-in:

@@ -83,6 +83,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
         "google_scholar": {"max_results": 20, "rate_limit_rps": 0.5, "proxy": True},
         "semantic_scholar": {"max_results": 100, "rate_limit_rps": 3.0, "api_key": ""},
         "crossref": {"max_results": 100, "rate_limit_rps": 3.0, "mailto": ""},
+        "openalex": {"max_results": 100, "rate_limit_rps": 5.0, "api_key": "", "mailto": ""},
         "pubmed": {"api_key": "", "rate_limit_rps": 3.0},
         "scopus": {"api_key": "", "rate_limit_rps": 2.0},
         "biorxiv": {"rate_limit_rps": 1.0},
@@ -118,6 +119,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
 _PLATFORM_SECRET_ENV = {
     "semantic_scholar": {"api_key": "SEMANTIC_SCHOLAR_API_KEY"},
     "crossref": {"mailto": "CROSSREF_MAILTO"},
+    "openalex": {"api_key": "OPENALEX_API_KEY", "mailto": "OPENALEX_MAILTO"},
     "pubmed": {"api_key": "PUBMED_API_KEY"},
     "scopus": {"api_key": "SCOPUS_API_KEY"},
     "webofscience": {"api_key": "WOS_API_KEY"},

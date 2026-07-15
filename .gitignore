@@ -9,5 +9,7 @@ build/
 .env
 config.yaml
 ._*
+.DS_Store
 downloads/
 reference/
+.ace-tool/

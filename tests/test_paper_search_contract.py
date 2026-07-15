@@ -19,6 +19,7 @@ from paper_search_mcp.config import Config  # noqa: E402
 from paper_search_mcp.models import Paper, WosSearchOptions  # noqa: E402
 from paper_search_mcp.search.biorxiv import BioRxivSearcher  # noqa: E402
 from paper_search_mcp.search.crossref import CrossRefSearcher  # noqa: E402
+from paper_search_mcp.search.openalex import OpenAlexSearcher  # noqa: E402
 from paper_search_mcp.search.webofscience import WebOfScienceSearcher  # noqa: E402
 from paper_search_mcp.tools.paper_search import (  # noqa: E402
     _build_search_kwargs,
@@ -125,6 +126,13 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
         # medrxiv is not in default_platforms, so not enabled
         self.assertNotIn("medrxiv", config.default_platforms)
         self.assertFalse(config.is_platform_enabled("medrxiv"))
+
+    def test_env_config_defines_openalex_platform(self) -> None:
+        with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+            config = Config()
+        self.assertIn("openalex", config.platforms)
+        self.assertEqual(config.platform_config("openalex")["rate_limit_rps"], 5.0)
+        self.assertIn("api_key", config.platform_config("openalex"))
 
     def test_env_overrides_apply_without_config_files(self) -> None:
         with patch.dict(
@@ -268,6 +276,54 @@ class PaperSearchContractTests(unittest.IsolatedAsyncioTestCase):
             searcher.diagnostics_snapshot()["request_url"],
             "https://api.clarivate.com/apis/wos-starter/v1/documents",
         )
+
+
+class OpenAlexSearcherTests(unittest.TestCase):
+    def test_abstract_from_inverted_index_reconstructs_text(self) -> None:
+        abstract = OpenAlexSearcher._abstract_from_inverted_index(
+            {
+                "Construction": [0],
+                "safety": [1],
+                "matters.": [2],
+            }
+        )
+
+        self.assertEqual(abstract, "Construction safety matters.")
+
+    def test_parse_work_maps_openalex_fields(self) -> None:
+        with patch.object(config_module, "_find_legacy_config_files", return_value=[]):
+            searcher = OpenAlexSearcher(Config())
+
+        paper = searcher._parse_work(
+            {
+                "id": "https://openalex.org/W123",
+                "doi": "https://doi.org/10.1000/example",
+                "display_name": "Construction Safety",
+                "publication_date": "2025-01-02",
+                "publication_year": 2025,
+                "cited_by_count": 7,
+                "abstract_inverted_index": {"Safe": [0], "sites": [1]},
+                "authorships": [
+                    {"author": {"display_name": "Alice Smith"}},
+                    {"author": {"display_name": "Bob Chen"}},
+                ],
+                "primary_location": {
+                    "source": {"display_name": "Automation in Construction"},
+                    "pdf_url": "https://example.test/paper.pdf",
+                },
+                "type": "article",
+                "primary_topic": {"display_name": "Construction management"},
+                "open_access": {"oa_status": "hybrid"},
+            }
+        )
+
+        self.assertIsNotNone(paper)
+        assert paper is not None
+        self.assertEqual(paper.doi, "10.1000/example")
+        self.assertEqual(paper.abstract, "Safe sites")
+        self.assertEqual(paper.authors, ["Alice Smith", "Bob Chen"])
+        self.assertEqual(paper.journal, "Automation in Construction")
+        self.assertEqual(paper.pdf_url, "https://example.test/paper.pdf")
 
 
 class BioRxivSearcherTests(unittest.IsolatedAsyncioTestCase):

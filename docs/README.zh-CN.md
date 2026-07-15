@@ -154,7 +154,7 @@ PAPER_SEARCH_DEFAULT_PLATFORMS=arxiv,crossref,webofscience
 | `..._RATE_LIMIT_RPS` | `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5` | 该平台的请求速率限制（次/秒） |
 | `..._PROXY` | `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true` | 为该平台启用代理 |
 
-`<PLATFORM>` 名称：`ARXIV`、`SEMANTIC_SCHOLAR`、`GOOGLE_SCHOLAR`、`CROSSREF`、`PUBMED`、`SCOPUS`、`BIORXIV`、`MEDRXIV`、`WEBOFSCIENCE`。
+`<PLATFORM>` 名称：`ARXIV`、`SEMANTIC_SCHOLAR`、`GOOGLE_SCHOLAR`、`CROSSREF`、`OPENALEX`、`PUBMED`、`SCOPUS`、`BIORXIV`、`MEDRXIV`、`WEBOFSCIENCE`。
 
 ### 凭证
 
@@ -164,6 +164,8 @@ PAPER_SEARCH_DEFAULT_PLATFORMS=arxiv,crossref,webofscience
 |------|----------|------|
 | `SEMANTIC_SCHOLAR_API_KEY` | 可选 | 提高速率限制 |
 | `CROSSREF_MAILTO` | 可选 | 加入 CrossRef 礼貌池（更快响应） |
+| `OPENALEX_API_KEY` | OpenAlex 启用时 | OpenAlex API key |
+| `OPENALEX_MAILTO` | 可选 | 加入 OpenAlex 礼貌池 |
 | `PUBMED_API_KEY` | PubMed 启用时 | PubMed API key |
 | `SCOPUS_API_KEY` | Scopus 启用时 | Scopus API key |
 | `WOS_API_KEY` | Web of Science 启用时 | WoS Starter API key |

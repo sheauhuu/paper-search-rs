@@ -145,6 +145,7 @@ Supported platforms:
 - `semantic_scholar`
 - `google_scholar`
 - `crossref`
+- `openalex`
 - `pubmed`
 - `scopus`
 - `biorxiv`
@@ -244,7 +245,7 @@ Pattern: `PAPER_SEARCH_PLATFORM_<PLATFORM>_<FIELD>`. All optional.
 | `..._RATE_LIMIT_RPS` | `PAPER_SEARCH_PLATFORM_ARXIV_RATE_LIMIT_RPS=0.5` | Requests per second limit |
 | `..._PROXY` | `PAPER_SEARCH_PLATFORM_GOOGLE_SCHOLAR_PROXY=true` | Enable proxy for this platform |
 
-Supported `<PLATFORM>` names: `ARXIV`, `SEMANTIC_SCHOLAR`, `GOOGLE_SCHOLAR`, `CROSSREF`, `PUBMED`, `SCOPUS`, `BIORXIV`, `MEDRXIV`, `WEBOFSCIENCE`.
+Supported `<PLATFORM>` names: `ARXIV`, `SEMANTIC_SCHOLAR`, `GOOGLE_SCHOLAR`, `CROSSREF`, `OPENALEX`, `PUBMED`, `SCOPUS`, `BIORXIV`, `MEDRXIV`, `WEBOFSCIENCE`.
 
 ### Credentials
 
@@ -254,6 +255,8 @@ Required only when the corresponding platform is enabled.
 |----------|---------------|-------------|
 | `SEMANTIC_SCHOLAR_API_KEY` | Optional | Higher rate limit for Semantic Scholar |
 | `CROSSREF_MAILTO` | Optional | CrossRef polite pool (faster response) |
+| `OPENALEX_API_KEY` | OpenAlex enabled | OpenAlex API key |
+| `OPENALEX_MAILTO` | Optional | OpenAlex polite pool |
 | `PUBMED_API_KEY` | PubMed enabled | PubMed API key |
 | `SCOPUS_API_KEY` | Scopus enabled | Scopus API key |
 | `WOS_API_KEY` | Web of Science enabled | WoS Starter API key |

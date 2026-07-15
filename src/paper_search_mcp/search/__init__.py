@@ -9,6 +9,7 @@ from .arxiv import ArxivSearcher
 from .semantic_scholar import SemanticScholarSearcher
 from .google_scholar import GoogleScholarSearcher
 from .crossref import CrossRefSearcher
+from .openalex import OpenAlexSearcher
 from .pubmed import PubMedSearcher
 from .scopus import ScopusSearcher
 from .biorxiv import BioRxivSearcher, MedRxivSearcher
@@ -19,6 +20,7 @@ SEARCHER_REGISTRY: Dict[str, Type[BaseSearcher]] = {
     "semantic_scholar": SemanticScholarSearcher,
     "google_scholar": GoogleScholarSearcher,
     "crossref": CrossRefSearcher,
+    "openalex": OpenAlexSearcher,
     "pubmed": PubMedSearcher,
     "scopus": ScopusSearcher,
     "biorxiv": BioRxivSearcher,

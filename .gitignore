@@ -3,9 +3,14 @@
 .trellis/*
 __pycache__/
 *.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 *.egg-info/
 dist/
 build/
+target/
 .env
 config.yaml
 ._*

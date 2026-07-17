@@ -3,8 +3,18 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { PLATFORM_ENTRIES } from "./release-contract.mjs";
+
+export function isDirectExecution(argument, moduleUrl, platform = process.platform) {
+  if (!argument) {
+    return false;
+  }
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const modulePath = fileURLToPath(moduleUrl, { windows: platform === "win32" });
+  return pathApi.resolve(argument) === pathApi.resolve(modulePath);
+}
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -165,6 +175,6 @@ async function main() {
   process.stdout.write(`verified ${files.length} release artifacts\n`);
 }
 
-if (path.resolve(process.argv[1] ?? "") === path.resolve(new URL(import.meta.url).pathname)) {
+if (isDirectExecution(process.argv[1], import.meta.url)) {
   await main();
 }

@@ -8,6 +8,7 @@ import test from "node:test";
 
 import {
   artifactSpecifications,
+  isDirectExecution,
   validateArtifactSet,
   verifyChecksums,
   writeChecksums,
@@ -71,6 +72,16 @@ test("accepts consistent Cargo, npm, platform, and tag versions", () => {
   assert.equal(
     validatePackageMetadata({ ...fixtureMetadata(), tag: "v0.2.0" }),
     "0.2.0",
+  );
+});
+
+test("detects direct CLI execution from a Windows file URL", () => {
+  const script = String.raw`D:\a\paper-search-rs\scripts\release-artifacts.mjs`;
+  const moduleUrl = "file:///D:/a/paper-search-rs/scripts/release-artifacts.mjs";
+  assert.equal(isDirectExecution(script, moduleUrl, "win32"), true);
+  assert.equal(
+    isDirectExecution(String.raw`D:\a\paper-search-rs\scripts\other.mjs`, moduleUrl, "win32"),
+    false,
   );
 });
 

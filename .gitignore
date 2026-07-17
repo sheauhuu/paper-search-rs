@@ -1,6 +1,8 @@
 .agents/*
 .claude/*
+.codex/
 .trellis/*
+AGENTS.md
 __pycache__/
 *.pyc
 .venv/

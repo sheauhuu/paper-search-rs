@@ -137,3 +137,40 @@ async fn conditionally_registers_jcr_and_rejects_invalid_input() {
         .await
         .expect("client should shut down cleanly");
 }
+
+#[tokio::test]
+async fn rejects_zero_wos_page_before_provider_call() {
+    let client =
+        ().serve(server_command_with_platforms(false, "webofscience"))
+            .await
+            .expect("stdio server should initialize");
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("paper_search").with_arguments(
+                serde_json::json!({
+                    "query": "rust",
+                    "platforms": ["webofscience"],
+                    "wos_options": {"page": 0}
+                })
+                .as_object()
+                .expect("fixture is an object")
+                .clone(),
+            ),
+        )
+        .await
+        .expect("runtime range errors should be returned as tool results");
+
+    assert_eq!(result.is_error, Some(true));
+    let structured = result
+        .structured_content
+        .expect("tool errors should retain structured content");
+    assert_eq!(structured["error"]["code"], "invalid_request");
+    assert_eq!(
+        structured["error"]["message"],
+        "invalid request: wos_options.page must be at least 1"
+    );
+    client
+        .cancel()
+        .await
+        .expect("client should shut down cleanly");
+}

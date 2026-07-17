@@ -1,11 +1,12 @@
 use crate::config::Config;
 use crate::error::{AppError, AppResult};
-use crate::jcr::loader::{contains_jcr_data, load_jcr_index};
+use crate::jcr::loader::{contains_jcr_data, detect_jcr_year, load_jcr_index};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use flate2::read::GzDecoder;
 use reqwest::header::ACCEPT;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::future::Future;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use tempfile::Builder;
@@ -32,7 +33,20 @@ pub struct UpdateOutcome {
     pub remote_ref: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ValidatedDataset {
+    index_size: usize,
+    jcr_year: Option<u32>,
+}
+
 pub async fn ensure_current(config: &Config) -> AppResult<bool> {
+    ensure_current_with(config, update_from_remote(config)).await
+}
+
+async fn ensure_current_with<F>(config: &Config, update: F) -> AppResult<bool>
+where
+    F: Future<Output = AppResult<UpdateOutcome>>,
+{
     if config.jcr.auto_update_days == 0 {
         return Ok(false);
     }
@@ -42,9 +56,15 @@ pub async fn ensure_current(config: &Config) -> AppResult<bool> {
     {
         return Ok(false);
     }
-    update_from_remote(config)
-        .await
-        .map(|outcome| outcome.changed)
+    let outcome = update.await;
+    if outcome.is_err() && source.is_some() {
+        let mut version = read_version(&config.jcr.data_dir);
+        version.last_check = Some(Utc::now());
+        if let Err(error) = write_version(&config.jcr.data_dir, &version) {
+            tracing::warn!(%error, "[jcr] could not record failed runtime update check");
+        }
+    }
+    outcome.map(|outcome| outcome.changed)
 }
 
 pub async fn update_jcr(config: &Config, force: bool) -> AppResult<UpdateOutcome> {
@@ -88,6 +108,9 @@ async fn update_from_remote(config: &Config) -> AppResult<UpdateOutcome> {
         && let Some(source) = data_source_dir(&config.jcr.data_dir)
     {
         version.last_check = Some(Utc::now());
+        if let Some(year) = detect_jcr_year(&source)? {
+            version.jcr_year = Some(year);
+        }
         write_version(&config.jcr.data_dir, &version)?;
         let index_size = load_jcr_index(&source)?.len();
         return Ok(UpdateOutcome {
@@ -100,24 +123,40 @@ async fn update_from_remote(config: &Config) -> AppResult<UpdateOutcome> {
     let archive = download_archive(&client, &revision).await?;
     let data_dir = config.jcr.data_dir.clone();
     let revision_for_task = revision.clone();
-    let index_size = tokio::task::spawn_blocking(move || {
+    let dataset = tokio::task::spawn_blocking(move || {
         extract_validate_publish(&data_dir, &revision_for_task, &archive)
     })
     .await
     .map_err(|error| AppError::Jcr(format!("JCR update task failed: {error}")))??;
 
-    let now = Utc::now();
+    write_successful_update(
+        &config.jcr.data_dir,
+        version,
+        &revision,
+        dataset,
+        Utc::now(),
+    )?;
+    Ok(UpdateOutcome {
+        changed: true,
+        index_size: dataset.index_size,
+        remote_ref: revision,
+    })
+}
+
+fn write_successful_update(
+    data_dir: &Path,
+    mut version: VersionInfo,
+    revision: &str,
+    dataset: ValidatedDataset,
+    now: DateTime<Utc>,
+) -> AppResult<()> {
     version.last_update = Some(now);
     version.last_check = Some(now);
     version.source = Some(SHOWJCR_REPOSITORY.into());
-    version.remote_ref = Some(revision.clone());
-    version.index_size = Some(index_size);
-    write_version(&config.jcr.data_dir, &version)?;
-    Ok(UpdateOutcome {
-        changed: true,
-        index_size,
-        remote_ref: revision,
-    })
+    version.remote_ref = Some(revision.to_owned());
+    version.jcr_year = dataset.jcr_year;
+    version.index_size = Some(dataset.index_size);
+    write_version(data_dir, &version)
 }
 
 fn github_client(config: &Config) -> AppResult<reqwest::Client> {
@@ -199,7 +238,11 @@ async fn download_archive(client: &reqwest::Client, revision: &str) -> AppResult
     Ok(bytes)
 }
 
-fn extract_validate_publish(data_dir: &Path, revision: &str, archive: &[u8]) -> AppResult<usize> {
+fn extract_validate_publish(
+    data_dir: &Path,
+    revision: &str,
+    archive: &[u8],
+) -> AppResult<ValidatedDataset> {
     let staging = Builder::new()
         .prefix(".jcr-staging-")
         .tempdir_in(data_dir)?;
@@ -238,6 +281,10 @@ fn extract_validate_publish(data_dir: &Path, revision: &str, archive: &[u8]) -> 
             "ShowJCR archive produced an empty index".into(),
         ));
     }
+    let dataset = ValidatedDataset {
+        index_size: index.len(),
+        jcr_year: detect_jcr_year(&source)?,
+    };
 
     let prepared = staging.path().join("prepared");
     fs::rename(&source, &prepared).map_err(|error| {
@@ -246,7 +293,7 @@ fn extract_validate_publish(data_dir: &Path, revision: &str, archive: &[u8]) -> 
         ))
     })?;
     publish_directory(data_dir, &prepared)?;
-    Ok(index.len())
+    Ok(dataset)
 }
 
 fn find_data_directory(root: &Path, depth: usize) -> Option<PathBuf> {
@@ -354,10 +401,95 @@ mod tests {
             "showjcr-revision/中科院分区表及JCR原始数据文件/JCR2025_UTF8.csv",
             csv,
         );
-        let count = extract_validate_publish(directory.path(), "revision", &archive).unwrap();
-        assert_eq!(count, 1);
+        let dataset = extract_validate_publish(directory.path(), "revision", &archive).unwrap();
+        assert_eq!(dataset.index_size, 1);
+        assert_eq!(dataset.jcr_year, Some(2025));
         let source = data_source_dir(directory.path()).expect("published data should be found");
         assert_eq!(load_jcr_index(&source).unwrap().len(), 1);
+
+        let now = Utc::now();
+        write_successful_update(
+            directory.path(),
+            VersionInfo::default(),
+            "revision",
+            dataset,
+            now,
+        )
+        .unwrap();
+        let version = read_version(directory.path());
+        assert_eq!(version.jcr_year, Some(2025));
+        assert_eq!(version.index_size, Some(1));
+        assert_eq!(version.last_update, Some(now));
+    }
+
+    #[tokio::test]
+    async fn failed_runtime_check_is_throttled_when_local_data_exists() {
+        let directory = tempfile::tempdir().unwrap();
+        let current = directory.path().join("current");
+        fs::create_dir_all(&current).unwrap();
+        fs::write(
+            current.join("JCR2025-UTF8.csv"),
+            "Journal,ISSN,IF(2025)\nTest Journal,1234-5678,5.2\n",
+        )
+        .unwrap();
+        let mut config = Config::from_env().unwrap();
+        config.jcr.data_dir = directory.path().to_path_buf();
+        config.jcr.auto_update_days = 7;
+
+        let error = ensure_current_with(
+            &config,
+            std::future::ready(Err(AppError::Jcr("network unavailable".into()))),
+        )
+        .await
+        .expect_err("the original update failure should still be reported");
+        assert!(error.to_string().contains("network unavailable"));
+        assert!(read_version(directory.path()).last_check.is_some());
+
+        let changed = ensure_current_with(
+            &config,
+            std::future::ready(Ok(UpdateOutcome {
+                changed: true,
+                index_size: 1,
+                remote_ref: "should-not-run".into(),
+            })),
+        )
+        .await
+        .unwrap();
+        assert!(
+            !changed,
+            "a recent failed check should suppress another attempt"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_first_use_check_is_not_throttled_without_local_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = Config::from_env().unwrap();
+        config.jcr.data_dir = directory.path().to_path_buf();
+        config.jcr.auto_update_days = 7;
+
+        ensure_current_with(
+            &config,
+            std::future::ready(Err(AppError::Jcr("network unavailable".into()))),
+        )
+        .await
+        .expect_err("the first-use update failure should still be reported");
+        assert!(read_version(directory.path()).last_check.is_none());
+
+        let changed = ensure_current_with(
+            &config,
+            std::future::ready(Ok(UpdateOutcome {
+                changed: true,
+                index_size: 1,
+                remote_ref: "retry".into(),
+            })),
+        )
+        .await
+        .unwrap();
+        assert!(
+            changed,
+            "first-use updates should retry when no local data exists"
+        );
     }
 
     #[test]

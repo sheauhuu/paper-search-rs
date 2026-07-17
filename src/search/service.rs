@@ -85,6 +85,11 @@ impl SearchService {
                 "max_results must be between 1 and 100".into(),
             ));
         }
+        if input.wos_options.as_ref().and_then(|options| options.page) == Some(0) {
+            return Err(AppError::InvalidRequest(
+                "wos_options.page must be at least 1".into(),
+            ));
+        }
         validate_filters(&input)?;
         let targets = self.resolve_targets(&input)?;
         let semaphore = Arc::new(Semaphore::new(self.config.search.max_concurrent_searches));
@@ -218,7 +223,7 @@ fn provider_init_error(error: crate::providers::ProviderError) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Paper, ProviderName};
+    use crate::model::{Paper, ProviderName, WosSearchOptions};
     use crate::providers::{ProviderError, ProviderSearchResult};
     use async_trait::async_trait;
 
@@ -269,6 +274,22 @@ mod tests {
         assert!(outcome.all_providers_failed);
         assert!(outcome.result.papers.is_empty());
         assert_eq!(outcome.result.failures.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn rejects_zero_wos_page_before_provider_fan_out() {
+        let service = fake_service(false);
+        let mut input = search_input();
+        input.wos_options = Some(WosSearchOptions {
+            page: Some(0),
+            ..WosSearchOptions::default()
+        });
+
+        let error = service.search(input).await.unwrap_err();
+        assert!(matches!(
+            error,
+            AppError::InvalidRequest(message) if message == "wos_options.page must be at least 1"
+        ));
     }
 
     fn fake_service(all_fail: bool) -> SearchService {

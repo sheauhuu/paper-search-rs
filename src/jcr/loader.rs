@@ -40,6 +40,35 @@ pub fn contains_jcr_data(data_dir: &Path) -> bool {
         .is_ok_and(|files| !files.is_empty())
 }
 
+pub fn detect_jcr_year(data_dir: &Path) -> AppResult<Option<u32>> {
+    let database = data_dir.join("jcr.db");
+    if database.is_file() {
+        match sqlite_jcr_year(&database) {
+            Ok(Some(year)) => return Ok(Some(year)),
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(%error, "[jcr] could not detect year from SQLite; trying CSV")
+            }
+        }
+    }
+
+    Ok(latest_file(data_dir, "JCR", "UTF8.csv")?
+        .as_deref()
+        .and_then(|path| path.file_name())
+        .and_then(|name| name.to_str())
+        .and_then(year_from_name))
+}
+
+fn sqlite_jcr_year(database: &Path) -> AppResult<Option<u32>> {
+    let connection =
+        Connection::open_with_flags(database, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(
+            |error| AppError::Jcr(format!("could not open {}: {error}", database.display())),
+        )?;
+    Ok(find_latest_table(&table_names(&connection)?, "JCR")
+        .as_deref()
+        .and_then(year_from_name))
+}
+
 fn load_sqlite(database: &Path) -> AppResult<JcrIndex> {
     let connection =
         Connection::open_with_flags(database, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(
@@ -65,7 +94,7 @@ fn load_sqlite(database: &Path) -> AppResult<JcrIndex> {
     }
     if let Some(table) = find_latest_table(&tables, "CCF") {
         for row in read_table(&connection, &table)? {
-            builder.upsert(ccf_entry(&row));
+            builder.upsert_with_aliases(ccf_entry(&row), ccf_aliases(&row));
         }
     }
     if let Some(table) = find_latest_table(&tables, "GJQKYJMD") {
@@ -91,19 +120,34 @@ fn table_names(connection: &Connection) -> AppResult<HashSet<String>> {
 fn find_latest_table(tables: &HashSet<String>, prefix: &str) -> Option<String> {
     tables
         .iter()
-        .filter(|table| {
-            table
-                .to_ascii_uppercase()
-                .starts_with(&prefix.to_ascii_uppercase())
-        })
-        .max_by_key(|table| {
-            table
-                .split(|character: char| !character.is_ascii_digit())
-                .filter_map(|value| value.parse::<u32>().ok())
-                .max()
-                .unwrap_or(0)
-        })
-        .cloned()
+        .filter_map(|table| family_year(table, prefix).map(|year| (year, table)))
+        .max_by_key(|(year, _)| *year)
+        .map(|(_, table)| table.clone())
+}
+
+fn family_year(value: &str, prefix: &str) -> Option<u32> {
+    if !value.get(..prefix.len())?.eq_ignore_ascii_case(prefix) {
+        return None;
+    }
+    let remainder = value.get(prefix.len()..)?;
+    let year = remainder.get(..4)?;
+    if !year.bytes().all(|byte| byte.is_ascii_digit())
+        || remainder
+            .as_bytes()
+            .get(4)
+            .is_some_and(|byte| !matches!(byte, b'-' | b'_'))
+    {
+        return None;
+    }
+    year.parse().ok()
+}
+
+fn year_from_name(value: &str) -> Option<u32> {
+    value
+        .split(|character: char| !character.is_ascii_digit())
+        .filter(|part| part.len() == 4)
+        .filter_map(|part| part.parse::<u32>().ok())
+        .max()
 }
 
 fn read_table(connection: &Connection, table: &str) -> AppResult<Vec<TextRow>> {
@@ -163,7 +207,7 @@ fn load_csv(data_dir: &Path) -> AppResult<JcrIndex> {
     }
     if let Some(path) = latest_file(data_dir, "CCF", "UTF8.csv")? {
         for row in read_csv(&path)? {
-            builder.upsert(ccf_entry(&row));
+            builder.upsert_with_aliases(ccf_entry(&row), ccf_aliases(&row));
         }
     }
     if let Some(path) = latest_file(data_dir, "GJQKYJMD", ".csv")? {
@@ -175,11 +219,15 @@ fn load_csv(data_dir: &Path) -> AppResult<JcrIndex> {
 }
 
 fn latest_file(data_dir: &Path, prefix: &str, suffix: &str) -> AppResult<Option<PathBuf>> {
-    let mut files = find_files(data_dir, |name| {
-        name.starts_with(prefix) && name.ends_with(suffix)
+    let files = find_files(data_dir, |name| {
+        name.ends_with(suffix) && family_year(name, prefix).is_some()
     })?;
-    files.sort();
-    Ok(files.pop())
+    Ok(files.into_iter().max_by_key(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| family_year(name, prefix))
+            .unwrap_or(0)
+    }))
 }
 
 fn find_files(data_dir: &Path, predicate: impl Fn(&str) -> bool) -> AppResult<Vec<PathBuf>> {
@@ -238,7 +286,7 @@ fn jcr_entry(row: &TextRow) -> JcrEntry {
             impact_factor,
             jcr_quartile: find_value(row, |key| key.to_ascii_lowercase().contains("quartile")),
             jcr_rank: find_value(row, |key| key.to_ascii_lowercase().contains("rank")),
-            jcr_category: value_option(row, &["Category"]),
+            jcr_category: indexed_value(row, "Category"),
             ..JournalMetrics::default()
         },
     }
@@ -267,7 +315,9 @@ fn cas_entry(row: &TextRow) -> JcrEntry {
         eissns: issns,
         journal: value(row, &["Journal"]),
         metrics: JournalMetrics {
-            cas_quartile: value_option(row, &["大类分区"]),
+            cas_quartile: value_option(row, &["大类分区"])
+                .as_deref()
+                .and_then(parse_cas_quartile),
             cas_category: value_option(row, &["大类"]),
             cas_sub_categories: sub_categories,
             ..JournalMetrics::default()
@@ -276,9 +326,16 @@ fn cas_entry(row: &TextRow) -> JcrEntry {
 }
 
 fn xr_entry(row: &TextRow) -> JcrEntry {
-    let quartile = find_value(row, |key| key.contains("新锐分区"))
-        .map(|value| value.replace('区', "").trim().to_owned())
-        .filter(|value| matches!(value.as_str(), "1" | "2" | "3" | "4"));
+    let quartile = value_option(row, &["大类新锐分区"])
+        .as_deref()
+        .and_then(parse_cas_quartile)
+        .or_else(|| {
+            find_value(row, |key| {
+                key.starts_with("大类") && key.contains("新锐分区")
+            })
+            .as_deref()
+            .and_then(parse_cas_quartile)
+        });
     JcrEntry {
         issn: value(row, &["ISSN"]),
         eissns: value_option(row, &["EISSN", "eISSN"]).into_iter().collect(),
@@ -316,6 +373,20 @@ fn ccf_entry(row: &TextRow) -> JcrEntry {
     }
 }
 
+fn ccf_aliases(row: &TextRow) -> Vec<String> {
+    [
+        "刊物名称",
+        "刊物简称",
+        "会议缩写",
+        "会议简称",
+        "Abbreviation",
+        "Acronym",
+    ]
+    .into_iter()
+    .filter_map(|name| value_option(row, &[name]))
+    .collect()
+}
+
 fn warning_entry(row: &TextRow) -> JcrEntry {
     JcrEntry {
         journal: value(row, &["Journal"]),
@@ -333,17 +404,56 @@ fn value(row: &TextRow, names: &[&str]) -> String {
 }
 
 fn value_option(row: &TextRow, names: &[&str]) -> Option<String> {
-    row.iter()
-        .find(|(key, _)| names.iter().any(|name| key.eq_ignore_ascii_case(name)))
-        .map(|(_, value)| value.trim().to_owned())
-        .filter(|value| !value.is_empty() && value != "-")
+    names.iter().find_map(|name| {
+        row.iter()
+            .filter(|(key, _)| key.eq_ignore_ascii_case(name))
+            .find_map(|(_, value)| normalized_value(value))
+    })
 }
 
 fn find_value(row: &TextRow, predicate: impl Fn(&str) -> bool) -> Option<String> {
     row.iter()
-        .find(|(key, _)| predicate(key))
-        .map(|(_, value)| value.trim().to_owned())
-        .filter(|value| !value.is_empty() && value != "-")
+        .filter(|(key, _)| predicate(key))
+        .find_map(|(_, value)| normalized_value(value))
+}
+
+fn indexed_value(row: &TextRow, base: &str) -> Option<String> {
+    value_option(row, &[base]).or_else(|| {
+        row.iter()
+            .filter_map(|(key, value)| {
+                let (prefix, suffix) = key.rsplit_once('_')?;
+                if !prefix.eq_ignore_ascii_case(base) {
+                    return None;
+                }
+                let index = suffix.parse::<u32>().ok()?;
+                normalized_value(value).map(|value| (index, value))
+            })
+            .min_by_key(|(index, _)| *index)
+            .map(|(_, value)| value)
+    })
+}
+
+fn normalized_value(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()
+        && value != "-"
+        && !value.eq_ignore_ascii_case("N/A")
+        && !value.eq_ignore_ascii_case("NA")
+        && !value.eq_ignore_ascii_case("NONE"))
+    .then(|| value.to_owned())
+}
+
+fn parse_cas_quartile(value: &str) -> Option<String> {
+    let value = value
+        .trim()
+        .strip_prefix('Q')
+        .unwrap_or(value.trim())
+        .trim();
+    value
+        .chars()
+        .next()
+        .filter(|value| matches!(value, '1' | '2' | '3' | '4'))
+        .map(|value| value.to_string())
 }
 
 fn parse_float(value: &str) -> Option<f64> {
@@ -359,28 +469,129 @@ mod tests {
     fn loads_csv_and_merges_metrics() {
         let directory = tempdir().unwrap();
         std::fs::write(
-            directory.path().join("JCR2025_UTF8.csv"),
-            "Journal,ISSN,eISSN,IF(2025),IF Quartile,Category\nTest Journal,1234-5678,,5.2,Q1,TEST\n",
+            directory.path().join("JCR2025-UTF8.csv"),
+            "Journal,ISSN,EISSN,IF(2025),Category_1,IF Quartile(2025)_1,IF Rank(2025)_1\nTest Journal,1234-5678,,5.2,TEST CATEGORY,Q1,1/100\n",
         )
         .unwrap();
         std::fs::write(
-            directory.path().join("FQBJCR2025_UTF8.csv"),
-            "Journal,ISSN/EISSN,大类分区,大类\nTest Journal,1234-5678,1,工程技术\n",
+            directory.path().join("FQBJCR2025-UTF8.csv"),
+            "Journal,ISSN/EISSN,大类分区,大类\nTest Journal,1234-5678,1 [1/1091],工程技术\n",
         )
         .unwrap();
         let index = load_jcr_index(directory.path()).unwrap();
         let entry = index.lookup("1234-5678", "").unwrap();
         assert_eq!(entry.metrics.impact_factor, Some(5.2));
         assert_eq!(entry.metrics.jcr_quartile.as_deref(), Some("Q1"));
+        assert_eq!(entry.metrics.jcr_category.as_deref(), Some("TEST CATEGORY"));
+        assert_eq!(entry.metrics.cas_quartile.as_deref(), Some("1"));
+        assert_eq!(detect_jcr_year(directory.path()).unwrap(), Some(2025));
+    }
+
+    #[test]
+    fn prefers_primary_xr_quartile_over_older_cas_data() {
+        let directory = tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("JCR2025-UTF8.csv"),
+            "Journal,ISSN,IF(2025)\nTest Journal,1234-5678,5.2\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.path().join("FQBJCR2025-UTF8.csv"),
+            "Journal,ISSN/EISSN,大类分区\nTest Journal,1234-5678,2 [20/100]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.path().join("XR2026-UTF8.csv"),
+            "Journal,ISSN,EISSN,大类新锐分区,大类2新锐分区\nTest Journal,1234-5678,,1 区,\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.path().join("XR2026Conferences-UTF8.csv"),
+            "会议缩写,Journal,分区,Top\nTEST,Test Conference,1,Top\n",
+        )
+        .unwrap();
+
+        let index = load_jcr_index(directory.path()).unwrap();
+        let entry = index.lookup("1234-5678", "").unwrap();
         assert_eq!(entry.metrics.cas_quartile.as_deref(), Some("1"));
     }
 
     #[test]
     fn selects_latest_year_table() {
-        let tables = HashSet::from(["JCR2024".into(), "JCR2025".into()]);
+        let tables = HashSet::from([
+            "JCR2024".into(),
+            "JCR2025".into(),
+            "JCR2026Supplement".into(),
+        ]);
         assert_eq!(
             find_latest_table(&tables, "JCR").as_deref(),
             Some("JCR2025")
         );
+    }
+
+    #[test]
+    fn ignores_placeholders_and_indexes_ccf_abbreviations() {
+        let directory = tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("JCR2025-UTF8.csv"),
+            concat!(
+                "Journal,ISSN,EISSN,IF(2025),Category_1,IF Quartile(2025)_1\n",
+                "Frontiers in Artificial Intelligence,N/A,2624-8212,6.7,COMPUTER SCIENCE,N/A\n",
+                "Another Missing-ISSN Journal,N/A,,2.0,TEST CATEGORY,Q2\n",
+                "IEEE Transactions on Pattern Analysis and Machine Intelligence,0162-8828,,20.4,COMPUTER SCIENCE,Q1\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            directory.path().join("CCF2026-UTF8.csv"),
+            concat!(
+                "刊物名称,Journal,年份,出版社,网址,领域,CCF推荐类别（国际学术刊物/会议）,CCF推荐类型\n",
+                "TPAMI,IEEE Transactions on Pattern Analysis and Machine Intelligence,2026,IEEE,,人工智能,推荐国际学术刊物,A类\n",
+                "AAAI,AAAI Conference on Artificial Intelligence,2026,AAAI,,人工智能,推荐国际学术会议,A类\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            directory.path().join("CCFT2025-UTF8.csv"),
+            "中文刊名,Journal,CCF推荐类别,T分区\n错误数据,Wrong Journal,计算领域高质量科技期刊分级目录,T1\n",
+        )
+        .unwrap();
+
+        let index = load_jcr_index(directory.path()).unwrap();
+        let frontiers = index
+            .lookup("", "Frontiers in Artificial Intelligence")
+            .unwrap();
+        assert_eq!(frontiers.metrics.impact_factor, Some(6.7));
+        assert_eq!(frontiers.metrics.jcr_quartile, None);
+        assert_eq!(
+            index
+                .lookup("", "Another Missing-ISSN Journal")
+                .unwrap()
+                .metrics
+                .impact_factor,
+            Some(2.0)
+        );
+
+        let tpami = index.lookup("", "TPAMI").unwrap();
+        assert_eq!(tpami.metrics.impact_factor, Some(20.4));
+        assert_eq!(tpami.metrics.ccf_rank.as_deref(), Some("A"));
+        let aaai = index.lookup("", "AAAI").unwrap();
+        assert_eq!(aaai.journal, "AAAI Conference on Artificial Intelligence");
+        assert_eq!(aaai.metrics.ccf_rank.as_deref(), Some("A"));
+        assert!(index.lookup("", "Wrong Journal").is_none());
+    }
+
+    #[test]
+    fn detects_year_from_latest_sqlite_table() {
+        let directory = tempdir().unwrap();
+        let database = directory.path().join("jcr.db");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE JCR2024 (Journal TEXT); CREATE TABLE JCR2025 (Journal TEXT);",
+            )
+            .unwrap();
+
+        assert_eq!(detect_jcr_year(directory.path()).unwrap(), Some(2025));
     }
 }

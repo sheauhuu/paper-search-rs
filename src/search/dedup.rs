@@ -9,13 +9,8 @@ pub fn deduplicate(papers: Vec<Paper>) -> Vec<Paper> {
     let mut doi_indexes: HashMap<String, usize> = HashMap::new();
 
     for paper in papers {
-        if let Some(doi) = paper
-            .doi
-            .as_deref()
-            .map(normalize_doi)
-            .filter(|doi| !doi.is_empty())
-            && let Some(index) = doi_indexes.get(&doi).copied()
-        {
+        let doi = normalized_paper_doi(&paper);
+        if let Some(index) = doi.as_deref().and_then(|doi| doi_indexes.get(doi).copied()) {
             merge_paper(&mut result[index], paper);
             continue;
         }
@@ -28,22 +23,28 @@ pub fn deduplicate(papers: Vec<Paper>) -> Vec<Paper> {
             })
         {
             merge_paper(&mut result[index], paper);
+            if let Some(doi) = normalized_paper_doi(&result[index]) {
+                doi_indexes.insert(doi, index);
+            }
             continue;
         }
 
         let index = result.len();
-        if let Some(doi) = paper
-            .doi
-            .as_deref()
-            .map(normalize_doi)
-            .filter(|doi| !doi.is_empty())
-        {
+        if let Some(doi) = doi {
             doi_indexes.insert(doi, index);
         }
         result.push(paper);
     }
 
     result
+}
+
+fn normalized_paper_doi(paper: &Paper) -> Option<String> {
+    paper
+        .doi
+        .as_deref()
+        .map(normalize_doi)
+        .filter(|doi| !doi.is_empty())
 }
 
 pub fn normalize_doi(value: &str) -> String {
@@ -167,5 +168,28 @@ mod tests {
             ),
         ]);
         assert_eq!(papers.len(), 1);
+    }
+
+    #[test]
+    fn indexes_doi_learned_during_title_merge() {
+        let papers = deduplicate(vec![
+            paper("A Study of Rust Safety", None, 0, ProviderName::Arxiv),
+            paper(
+                "A study of Rust safety",
+                Some("10.1/learned"),
+                1,
+                ProviderName::SemanticScholar,
+            ),
+            paper(
+                "A Completely Different Provider Title",
+                Some("https://doi.org/10.1/LEARNED"),
+                2,
+                ProviderName::Scopus,
+            ),
+        ]);
+
+        assert_eq!(papers.len(), 1);
+        assert_eq!(papers[0].citations, 2);
+        assert_eq!(papers[0].sources.len(), 3);
     }
 }

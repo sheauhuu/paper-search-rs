@@ -237,10 +237,23 @@ node scripts/smoke-npm-local.mjs
 scripts/smoke-uvx-local.sh
 ```
 
-The public-provider live smoke test is opt-in:
+Live smoke tests are opt-in. The public-provider test needs no credentials:
 
 ```bash
-cargo test --test live_smoke -- --ignored --nocapture
+cargo test --test live_smoke searches_public_providers -- --ignored --nocapture
+```
+
+With the corresponding environment credentials loaded, run Scopus and Web of Science separately:
+
+```bash
+cargo test --test live_smoke searches_scopus_with_credentials -- --ignored --nocapture
+cargo test --test live_smoke searches_web_of_science_with_credentials -- --ignored --nocapture
+```
+
+The ShowJCR smoke downloads into an automatically removed temporary directory:
+
+```bash
+cargo test --test live_smoke updates_and_queries_live_jcr -- --ignored --nocapture
 ```
 
 ## Native Targets
@@ -253,4 +266,4 @@ cargo test --test live_smoke -- --ignored --nocapture
 
 ## License
 
-MIT
+Apache-2.0

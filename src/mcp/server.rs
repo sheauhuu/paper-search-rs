@@ -77,7 +77,6 @@ impl PaperSearchServer {
 #[tool_handler(
     router = self.tool_router,
     name = "paper-search-rs",
-    version = "0.2.0",
     instructions = "Use paper_search for academic metadata search. Results are structured JSON and individual provider failures do not discard successful provider results."
 )]
 impl ServerHandler for PaperSearchServer {}
@@ -130,7 +129,12 @@ mod tests {
     }
 
     #[test]
-    fn handler_version_matches_package() {
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.2.0");
+    fn handler_metadata_uses_package_version() {
+        let mut config = Config::from_env().unwrap();
+        config.jcr.enabled = false;
+        let server = PaperSearchServer::new(Arc::new(config)).unwrap();
+        let info = server.get_info();
+        assert_eq!(info.server_info.name, "paper-search-rs");
+        assert_eq!(info.server_info.version, env!("CARGO_PKG_VERSION"));
     }
 }

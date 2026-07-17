@@ -218,10 +218,27 @@ node scripts/smoke-npm-local.mjs
 scripts/smoke-uvx-local.sh
 ```
 
-可选公网 smoke：
+可选公网 smoke。公共数据源不需要凭证：
 
 ```bash
-cargo test --test live_smoke -- --ignored --nocapture
+cargo test --test live_smoke searches_public_providers -- --ignored --nocapture
+```
+
+加载对应环境变量后，分别验证 Scopus 和 Web of Science：
+
+```bash
+cargo test --test live_smoke searches_scopus_with_credentials -- --ignored --nocapture
+cargo test --test live_smoke searches_web_of_science_with_credentials -- --ignored --nocapture
+```
+
+ShowJCR smoke 使用自动清理的临时目录：
+
+```bash
+cargo test --test live_smoke updates_and_queries_live_jcr -- --ignored --nocapture
 ```
 
 原生目标为 macOS arm64/x86_64、Linux x86_64/arm64 和 Windows x86_64。
+
+## 许可证
+
+Apache-2.0

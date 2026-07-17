@@ -188,7 +188,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for package in release/paper-search-rs-{darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-x64}-*.tgz; do
+          for package in ./release/paper-search-rs-{darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-x64}-*.tgz; do
             npm publish "$package" --access public --provenance
           done
       - name: Publish PyPI wheels
@@ -198,7 +198,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           version=$(node -p "require('./npm/package.json').version")
-          npm publish "release/paper-search-rs-${version}.tgz" --access public --provenance
+          npm publish "./release/paper-search-rs-${version}.tgz" --access public --provenance
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

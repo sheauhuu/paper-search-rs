@@ -100,6 +100,22 @@ test("packs the main npm package from an explicit local path", async () => {
   );
 });
 
+test("publishes npm tarballs from explicit local paths", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /^\s+for package in \.\/release\/paper-search-rs-\{darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-x64\}-\*\.tgz; do$/m,
+  );
+  assert.match(
+    workflow,
+    /^\s+npm publish "\.\/release\/paper-search-rs-\$\{version\}\.tgz" --access public --provenance$/m,
+  );
+  assert.doesNotMatch(workflow, /npm publish "?release\/paper-search-rs-/);
+});
+
 test("rejects version and target mapping drift", () => {
   const metadata = fixtureMetadata();
   metadata.mainManifest.optionalDependencies["paper-search-rs-linux-x64"] = "0.2.1";

@@ -143,7 +143,7 @@ jobs:
             node scripts/release-artifacts.mjs "$directory" --version "$version" --target "$target"
             find "$directory" -maxdepth 1 -type f ! -name SHA256SUMS -exec cp {} assembled/ \;
           done
-          npm pack npm --ignore-scripts --pack-destination assembled
+          npm pack ./npm --ignore-scripts --pack-destination assembled
           node scripts/release-artifacts.mjs assembled --version "$version" --write
       - name: Smoke-test assembled Linux x64 npm packages
         shell: bash

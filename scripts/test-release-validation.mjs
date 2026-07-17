@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -82,6 +82,21 @@ test("detects direct CLI execution from a Windows file URL", () => {
   assert.equal(
     isDirectExecution(String.raw`D:\a\paper-search-rs\scripts\other.mjs`, moduleUrl, "win32"),
     false,
+  );
+});
+
+test("packs the main npm package from an explicit local path", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /^\s+npm pack \.\/npm --ignore-scripts --pack-destination assembled$/m,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /^\s+npm pack npm --ignore-scripts --pack-destination assembled$/m,
   );
 });
 

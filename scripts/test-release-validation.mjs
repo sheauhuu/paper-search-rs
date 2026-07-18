@@ -116,14 +116,28 @@ test("publishes npm tarballs from explicit local paths", async () => {
   assert.doesNotMatch(workflow, /npm publish "?release\/paper-search-rs-/);
 });
 
-test("uses Node 24 artifact actions", async () => {
+test("uses Node 24 release actions", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/ci.yml", import.meta.url),
     "utf8",
   );
-  assert.equal(workflow.match(/actions\/upload-artifact@v5/g)?.length, 2);
-  assert.equal(workflow.match(/actions\/download-artifact@v5/g)?.length, 2);
-  assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/);
+  assert.equal(workflow.match(/actions\/upload-artifact@v6/g)?.length, 2);
+  assert.equal(workflow.match(/actions\/download-artifact@v7/g)?.length, 2);
+  assert.equal(workflow.match(/astral-sh\/setup-uv@v7/g)?.length, 1);
+  assert.doesNotMatch(workflow, /actions\/upload-artifact@v[45]/);
+  assert.doesNotMatch(workflow, /actions\/download-artifact@v[4-6]/);
+  assert.doesNotMatch(workflow, /astral-sh\/setup-uv@v6/);
+});
+
+test("removes the unused AWS tap before Rust setup on macOS", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /- name: Remove unused AWS Homebrew tap\n\s+if: runner\.os == 'macOS'\n\s+run: brew untap aws\/tap \|\| true\n\s+- uses: actions-rust-lang\/setup-rust-toolchain@v1/,
+  );
 });
 
 test("rejects version and target mapping drift", () => {

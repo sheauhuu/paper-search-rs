@@ -116,6 +116,16 @@ test("publishes npm tarballs from explicit local paths", async () => {
   assert.doesNotMatch(workflow, /npm publish "?release\/paper-search-rs-/);
 });
 
+test("uses Node 24 artifact actions", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.equal(workflow.match(/actions\/upload-artifact@v5/g)?.length, 2);
+  assert.equal(workflow.match(/actions\/download-artifact@v5/g)?.length, 2);
+  assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/);
+});
+
 test("rejects version and target mapping drift", () => {
   const metadata = fixtureMetadata();
   metadata.mainManifest.optionalDependencies["paper-search-rs-linux-x64"] = "0.2.1";
